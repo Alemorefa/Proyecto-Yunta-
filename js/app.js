@@ -290,14 +290,20 @@ function getTC() {
 
 function calcularUSD() {
     const tc = getTC();
-    if (!tc) return;
+    if (!tc) {
+        toast('Primero configurá el Tipo de Cambio en ⚙️ Configuración', 'info');
+        return;
+    }
     const ars = parseFloat(document.getElementById('producto-precio-ars').value) || 0;
     document.getElementById('producto-precio-usd').value = ars > 0 ? (ars / tc).toFixed(2) : '';
 }
 
 function calcularARS() {
     const tc = getTC();
-    if (!tc) return;
+    if (!tc) {
+        toast('Primero configurá el Tipo de Cambio en ⚙️ Configuración', 'info');
+        return;
+    }
     const usd = parseFloat(document.getElementById('producto-precio-usd').value) || 0;
     document.getElementById('producto-precio-ars').value = usd > 0 ? (usd * tc).toFixed(2) : '';
 }
