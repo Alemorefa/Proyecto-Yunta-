@@ -510,8 +510,7 @@ function seedInitialData() {
     const data = db();
     if (data.tiendas.length === 0) {
         data.tiendas.push(
-            { id: idGen(), nombre: 'LY25', direccion: '', telefono: '', fecha_creacion: now() },
-            { id: idGen(), nombre: 'Alverdi', direccion: '', telefono: '', fecha_creacion: now() }
+            { id: idGen(), nombre: 'LY25 Alberdi', direccion: '', telefono: '', fecha_creacion: now() }
         );
         dbSave(data);
     }
