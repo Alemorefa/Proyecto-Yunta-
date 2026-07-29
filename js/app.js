@@ -253,11 +253,17 @@ function guardarProducto(e) {
     e.preventDefault();
     const data = db();
     const id = document.getElementById('producto-id').value;
+    let precio_ars = parseFloat(document.getElementById('producto-precio-ars').value) || 0;
+    let precio_usd = parseFloat(document.getElementById('producto-precio-usd').value) || 0;
+    const tc = getTC();
+    if (precio_ars > 0 && precio_usd === 0 && tc) precio_usd = precio_ars / tc;
+    if (precio_usd > 0 && precio_ars === 0 && tc) precio_ars = precio_usd * tc;
+
     const obj = {
         descripcion: document.getElementById('producto-descripcion').value.trim(),
         sector: document.getElementById('producto-sector').value.trim(),
-        precio_ars: parseFloat(document.getElementById('producto-precio-ars').value) || 0,
-        precio_usd: parseFloat(document.getElementById('producto-precio-usd').value) || 0,
+        precio_ars: precio_ars,
+        precio_usd: precio_usd,
         stock_min: parseInt(document.getElementById('producto-stock-min').value) || 5,
         tienda_id: document.getElementById('producto-tienda').value || null,
         stock: parseInt(document.getElementById('producto-stock').value) || 0
@@ -275,6 +281,25 @@ function guardarProducto(e) {
     dbSave(data);
     cerrarForm('form-producto');
     renderInventario();
+}
+
+function getTC() {
+    const data = db();
+    return data.config.tc || 0;
+}
+
+function calcularUSD() {
+    const tc = getTC();
+    if (!tc) return;
+    const ars = parseFloat(document.getElementById('producto-precio-ars').value) || 0;
+    document.getElementById('producto-precio-usd').value = ars > 0 ? (ars / tc).toFixed(2) : '';
+}
+
+function calcularARS() {
+    const tc = getTC();
+    if (!tc) return;
+    const usd = parseFloat(document.getElementById('producto-precio-usd').value) || 0;
+    document.getElementById('producto-precio-ars').value = usd > 0 ? (usd * tc).toFixed(2) : '';
 }
 
 function editarProducto(id) { mostrarFormProducto(id); }
@@ -453,7 +478,7 @@ function renderConfiguracion() {
     const cfg = data.config || {};
     document.getElementById('config-nombre').value = cfg.nombre || '';
     document.getElementById('config-stock-min').value = cfg.stock_min || 5;
-    document.getElementById('config-moneda').value = cfg.moneda || '$';
+    document.getElementById('config-tc').value = cfg.tc || '';
 }
 
 function guardarConfig(e) {
@@ -462,7 +487,7 @@ function guardarConfig(e) {
     data.config = {
         nombre: document.getElementById('config-nombre').value.trim(),
         stock_min: parseInt(document.getElementById('config-stock-min').value) || 5,
-        moneda: document.getElementById('config-moneda').value
+        tc: parseFloat(document.getElementById('config-tc').value) || 0
     };
     dbSave(data);
     toast('Configuración guardada');

@@ -148,8 +148,8 @@
                                 <label>Descripción <input type="text" id="producto-descripcion" required></label>
                                 <label>Sector / Ubicación <input type="text" id="producto-sector" placeholder="Ej: Depósito A, Estante 3, Oficina..."></label>
                                 <div class="form-row">
-                                    <label>Precio ARS ($) <input type="number" id="producto-precio-ars" step="0.01" min="0"></label>
-                                    <label>Precio USD (US$) <input type="number" id="producto-precio-usd" step="0.01" min="0"></label>
+                                    <label>Precio ARS ($) <input type="number" id="producto-precio-ars" step="0.01" min="0" oninput="calcularUSD()"></label>
+                                    <label>Precio USD (US$) <input type="number" id="producto-precio-usd" step="0.01" min="0" oninput="calcularARS()"></label>
                                 </div>
                                 <div class="form-row">
                                     <label>Stock Mínimo <input type="number" id="producto-stock-min" value="5" min="0"></label>
@@ -274,12 +274,9 @@
                             <label>Stock Mínimo Global
                                 <input type="number" id="config-stock-min" value="5" min="0">
                             </label>
-                            <label>Moneda
-                                <select id="config-moneda">
-                                    <option value="$">$ - Peso/Dólar</option>
-                                    <option value="€">€ - Euro</option>
-                                    <option value="Bs">Bs - Bolívar</option>
-                                </select>
+                            <label>Tipo de Cambio (ARS → USD)
+                                <input type="number" id="config-tc" step="1" min="1" placeholder="Ej: 1500">
+                                <small style="color:#888; display:block; margin-top:4px;">1 USD = ? ARS (Ej: si 1 USD = $1500 ARS, pone 1500)</small>
                             </label>
                             <button type="submit" class="btn btn-primary">Guardar Configuración</button>
                         </form>
