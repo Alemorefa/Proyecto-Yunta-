@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App de Inventarios</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="app">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>Inventarios</h1>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-page="inicio">
+                    <span class="nav-icon">🏠</span>
+                    <span class="nav-label">Inicio</span>
+                </a>
+                <a href="#" class="nav-item" data-page="dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-label">Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" data-page="tiendas">
+                    <span class="nav-icon">🏪</span>
+                    <span class="nav-label">Tiendas</span>
+                </a>
+                <a href="#" class="nav-item" data-page="inventario">
+                    <span class="nav-icon">📦</span>
+                    <span class="nav-label">Inventario</span>
+                </a>
+                <a href="#" class="nav-item" data-page="movimientos">
+                    <span class="nav-icon">🔄</span>
+                    <span class="nav-label">Movimientos</span>
+                </a>
+                <a href="#" class="nav-item" data-page="historial">
+                    <span class="nav-icon">📜</span>
+                    <span class="nav-label">Historial</span>
+                </a>
+                <a href="#" class="nav-item" data-page="usuarios">
+                    <span class="nav-icon">👥</span>
+                    <span class="nav-label">Usuarios</span>
+                </a>
+                <a href="#" class="nav-item" data-page="configuracion">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-label">Configuración</span>
+                </a>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="topbar">
+                <h2 id="page-title">Inicio</h2>
+                <div class="topbar-actions">
+                    <span id="clock"></span>
+                </div>
+            </header>
+
+            <div class="content">
+                <!-- INICIO -->
+                <section id="page-inicio" class="page active">
+                    <div class="welcome-card">
+                        <h2>Bienvenido al Sistema de Inventarios</h2>
+                        <p>Gestiona tus tiendas, productos y movimientos de stock de forma sencilla.</p>
+                    </div>
+                    <div class="cards-grid" id="resumen-cards">
+                        <div class="card"><h3>Tiendas</h3><p class="card-number" id="res-tiendas">0</p></div>
+                        <div class="card"><h3>Productos</h3><p class="card-number" id="res-productos">0</p></div>
+                        <div class="card"><h3>Movimientos</h3><p class="card-number" id="res-movimientos">0</p></div>
+                        <div class="card"><h3>Usuarios</h3><p class="card-number" id="res-usuarios">0</p></div>
+                    </div>
+                </section>
+
+                <!-- DASHBOARD -->
+                <section id="page-dashboard" class="page">
+                    <div class="section-header">
+                        <h3>Panel de Control</h3>
+                    </div>
+                    <div class="cards-grid">
+                        <div class="card"><h3>Total Productos</h3><p class="card-number" id="dash-total-productos">0</p></div>
+                        <div class="card"><h3>Stock Bajo</h3><p class="card-number" id="dash-stock-bajo">0</p></div>
+                        <div class="card"><h3>Movimientos Hoy</h3><p class="card-number" id="dash-mov-hoy">0</p></div>
+                        <div class="card"><h3>Tiendas Activas</h3><p class="card-number" id="dash-tiendas">0</p></div>
+                    </div>
+                    <div class="dashboard-grid">
+                        <div class="panel">
+                            <h3>Productos con Stock Bajo</h3>
+                            <div class="table-container"><table id="dash-stock-table"><thead><tr><th>Producto</th><th>Tienda</th><th>Stock</th><th>Mínimo</th></tr></thead><tbody></tbody></table></div>
+                        </div>
+                        <div class="panel">
+                            <h3>Últimos Movimientos</h3>
+                            <div class="table-container"><table id="dash-mov-table"><thead><tr><th>Producto</th><th>Tipo</th><th>Cant</th><th>Fecha</th></tr></thead><tbody></tbody></table></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TIENDAS -->
+                <section id="page-tiendas" class="page">
+                    <div class="section-header">
+                        <h3>Gestión de Tiendas</h3>
+                        <button class="btn btn-primary" onclick="mostrarFormTienda()">+ Nueva Tienda</button>
+                    </div>
+                    <div class="table-container">
+                        <table id="tiendas-table">
+                            <thead><tr><th>ID</th><th>Nombre</th><th>Dirección</th><th>Teléfono</th><th>Acciones</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div id="form-tienda" class="modal-overlay hidden">
+                        <div class="modal">
+                            <h3 id="form-tienda-title">Nueva Tienda</h3>
+                            <form id="tienda-form" onsubmit="guardarTienda(event)">
+                                <input type="hidden" id="tienda-id">
+                                <label>Nombre <input type="text" id="tienda-nombre" required></label>
+                                <label>Dirección <input type="text" id="tienda-direccion"></label>
+                                <label>Teléfono <input type="text" id="tienda-telefono"></label>
+                                <div class="form-actions">
+                                    <button type="button" class="btn btn-secondary" onclick="cerrarForm('form-tienda')">Cancelar</button>
+                                    <button type="submit" class="btn btn-primary">Guardar</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- INVENTARIO -->
+                <section id="page-inventario" class="page">
+                    <div class="section-header">
+                        <h3>Inventario de Productos</h3>
+                        <button class="btn btn-primary" onclick="mostrarFormProducto()">+ Nuevo Producto</button>
+                    </div>
+                    <div class="filters">
+                        <select id="filtro-tienda-inv" onchange="renderInventario()">
+                            <option value="">Todas las tiendas</option>
+                        </select>
+                    </div>
+                    <div class="table-container">
+                        <table id="inventario-table">
+                            <thead><tr><th>Descripción</th><th>Sector</th><th>Tienda</th><th>Precio ARS</th><th>Precio USD</th><th>Stock</th><th>Stock Mín</th><th>Acciones</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div id="form-producto" class="modal-overlay hidden">
+                        <div class="modal">
+                            <h3 id="form-producto-title">Nuevo Producto</h3>
+                            <form id="producto-form" onsubmit="guardarProducto(event)">
+                                <input type="hidden" id="producto-id">
+                                <label>Descripción <input type="text" id="producto-descripcion" required></label>
+                                <label>Sector / Ubicación <input type="text" id="producto-sector" placeholder="Ej: Depósito A, Estante 3, Oficina..."></label>
+                                <div class="form-row">
+                                    <label>Precio ARS ($) <input type="number" id="producto-precio-ars" step="0.01" min="0"></label>
+                                    <label>Precio USD (US$) <input type="number" id="producto-precio-usd" step="0.01" min="0"></label>
+                                </div>
+                                <div class="form-row">
+                                    <label>Stock Mínimo <input type="number" id="producto-stock-min" value="5" min="0"></label>
+                                    <label>Stock Inicial <input type="number" id="producto-stock" value="0" min="0"></label>
+                                </div>
+                                <label>Tienda
+                                    <select id="producto-tienda" required></select>
+                                </label>
+                                <div class="form-actions">
+                                    <button type="button" class="btn btn-secondary" onclick="cerrarForm('form-producto')">Cancelar</button>
+                                    <button type="submit" class="btn btn-primary">Guardar</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- MOVIMIENTOS -->
+                <section id="page-movimientos" class="page">
+                    <div class="section-header">
+                        <h3>Registrar Movimiento</h3>
+                    </div>
+                    <div class="form-card">
+                        <form id="movimiento-form" onsubmit="registrarMovimiento(event)">
+                            <div class="form-row">
+                                <label>Tienda
+                                    <select id="mov-tienda" required onchange="cargarProductosTienda()"></select>
+                                </label>
+                                <label>Producto
+                                    <select id="mov-producto" required></select>
+                                </label>
+                            </div>
+                            <div class="form-row">
+                                <label>Tipo
+                                    <select id="mov-tipo" required>
+                                        <option value="entrada">Entrada</option>
+                                        <option value="salida">Salida</option>
+                                    </select>
+                                </label>
+                                <label>Cantidad
+                                    <input type="number" id="mov-cantidad" required min="1">
+                                </label>
+                            </div>
+                            <label>Motivo
+                                <input type="text" id="mov-motivo" placeholder="Ej: Reposición, venta, ajuste...">
+                            </label>
+                            <button type="submit" class="btn btn-primary">Registrar Movimiento</button>
+                        </form>
+                    </div>
+                </section>
+
+                <!-- HISTORIAL -->
+                <section id="page-historial" class="page">
+                    <div class="section-header">
+                        <h3>Historial de Movimientos</h3>
+                    </div>
+                    <div class="filters">
+                        <select id="filtro-tienda-hist" onchange="renderHistorial()">
+                            <option value="">Todas las tiendas</option>
+                        </select>
+                        <select id="filtro-tipo-hist" onchange="renderHistorial()">
+                            <option value="">Todos los tipos</option>
+                            <option value="entrada">Entradas</option>
+                            <option value="salida">Salidas</option>
+                        </select>
+                        <input type="date" id="filtro-fecha-hist" onchange="renderHistorial()">
+                        <button class="btn btn-secondary" onclick="limpiarFiltrosHistorial()">Limpiar Filtros</button>
+                    </div>
+                    <div class="table-container">
+                        <table id="historial-table">
+                            <thead><tr><th>Fecha</th><th>Tienda</th><th>Producto</th><th>Tipo</th><th>Cantidad</th><th>Usuario</th><th>Motivo</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- USUARIOS -->
+                <section id="page-usuarios" class="page">
+                    <div class="section-header">
+                        <h3>Gestión de Usuarios</h3>
+                        <button class="btn btn-primary" onclick="mostrarFormUsuario()">+ Nuevo Usuario</button>
+                    </div>
+                    <div class="table-container">
+                        <table id="usuarios-table">
+                            <thead><tr><th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Teléfono</th><th>Estado</th><th>Acciones</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div id="form-usuario" class="modal-overlay hidden">
+                        <div class="modal">
+                            <h3 id="form-usuario-title">Nuevo Usuario</h3>
+                            <form id="usuario-form" onsubmit="guardarUsuario(event)">
+                                <input type="hidden" id="usuario-id">
+                                <label>Nombre <input type="text" id="usuario-nombre" required></label>
+                                <label>Email <input type="email" id="usuario-email" required></label>
+                                <label>Teléfono <input type="text" id="usuario-telefono"></label>
+                                <label>Rol
+                                    <select id="usuario-rol">
+                                        <option value="empleado">Empleado</option>
+                                        <option value="admin">Administrador</option>
+                                    </select>
+                                </label>
+                                <div class="form-actions">
+                                    <button type="button" class="btn btn-secondary" onclick="cerrarForm('form-usuario')">Cancelar</button>
+                                    <button type="submit" class="btn btn-primary">Guardar</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- CONFIGURACION -->
+                <section id="page-configuracion" class="page">
+                    <div class="section-header">
+                        <h3>Configuración</h3>
+                    </div>
+                    <div class="form-card">
+                        <form id="config-form" onsubmit="guardarConfig(event)">
+                            <label>Nombre del Negocio
+                                <input type="text" id="config-nombre" placeholder="Mi Negocio">
+                            </label>
+                            <label>Stock Mínimo Global
+                                <input type="number" id="config-stock-min" value="5" min="0">
+                            </label>
+                            <label>Moneda
+                                <select id="config-moneda">
+                                    <option value="$">$ - Peso/Dólar</option>
+                                    <option value="€">€ - Euro</option>
+                                    <option value="Bs">Bs - Bolívar</option>
+                                </select>
+                            </label>
+                            <button type="submit" class="btn btn-primary">Guardar Configuración</button>
+                        </form>
+                    </div>
+                    <div class="form-card" style="margin-top: 1rem;">
+                        <h3>Datos</h3>
+                        <button type="button" class="btn btn-danger" onclick="exportarDatos()">📥 Exportar Datos</button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('import-file').click()">📤 Importar Datos</button>
+                        <input type="file" id="import-file" accept=".json" style="display:none" onchange="importarDatos(event)">
+                        <button type="button" class="btn btn-danger" onclick="if(confirm('¿Estás seguro? Se borrarán TODOS los datos.')){limpiarTodosDatos()}">🗑️ Limpiar Todos los Datos</button>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
