@@ -505,7 +505,20 @@ function limpiarTodosDatos() {
     renderPage(document.querySelector('.nav-item.active').dataset.page);
 }
 
+// ---- Seed initial data ----
+function seedInitialData() {
+    const data = db();
+    if (data.tiendas.length === 0) {
+        data.tiendas.push(
+            { id: idGen(), nombre: 'LY25', direccion: '', telefono: '', fecha_creacion: now() },
+            { id: idGen(), nombre: 'Alverdi', direccion: '', telefono: '', fecha_creacion: now() }
+        );
+        dbSave(data);
+    }
+}
+
 // ---- Init ----
 document.addEventListener('DOMContentLoaded', function() {
+    seedInitialData();
     renderInicio();
 });
