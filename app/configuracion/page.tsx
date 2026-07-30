@@ -22,7 +22,7 @@ export default function ConfiguracionPage() {
   const [cotizacionInfo, setCotizacionInfo] = useState<CotizacionDolar | null>(null);
   const [cotizacionError, setCotizacionError] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const { rol } = useRolActivo();
+  const { rol, esAdmin } = useRolActivo();
   const sesion = useSesionDisplay();
   const [nombreSesion, setNombreSesion] = useState("");
 
@@ -243,35 +243,41 @@ export default function ConfiguracionPage() {
             {data.categorias.map((c) => (
               <Badge key={c.id} variant="secondary" className="gap-1">
                 {c.nombre}
-                <button onClick={() => quitarCategoria(c.id)}>
-                  <X className="h-3 w-3" />
-                </button>
+                {esAdmin && (
+                  <button onClick={() => quitarCategoria(c.id)}>
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
               </Badge>
             ))}
           </div>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Nueva categoría"
-              value={nuevaCategoria}
-              onChange={(e) => setNuevaCategoria(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), agregarCategoria())}
-            />
-            <Button variant="outline" onClick={agregarCategoria}>Agregar</Button>
-          </div>
+          {esAdmin && (
+            <div className="flex gap-2">
+              <Input
+                placeholder="Nueva categoría"
+                value={nuevaCategoria}
+                onChange={(e) => setNuevaCategoria(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), agregarCategoria())}
+              />
+              <Button variant="outline" onClick={agregarCategoria}>Agregar</Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Datos (prototipo local)</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={exportarDatos}>Exportar Datos (JSON)</Button>
-          <Button variant="secondary" onClick={() => fileRef.current?.click()}>Importar Datos</Button>
-          <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={importarDatos} />
-          <Button variant="destructive" onClick={limpiarTodo}>Limpiar Todos los Datos</Button>
-        </CardContent>
-      </Card>
+      {esAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Datos (prototipo local)</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={exportarDatos}>Exportar Datos (JSON)</Button>
+            <Button variant="secondary" onClick={() => fileRef.current?.click()}>Importar Datos</Button>
+            <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={importarDatos} />
+            <Button variant="destructive" onClick={limpiarTodo}>Limpiar Todos los Datos</Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
