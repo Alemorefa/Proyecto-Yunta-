@@ -5,6 +5,8 @@
 import { useEffect, useState } from "react";
 import type { RolUsuario } from "./db";
 
+export type { RolUsuario };
+
 const ROLE_KEY = "inventarioLY25_rolActivo";
 
 export function getRolActivo(): RolUsuario {
