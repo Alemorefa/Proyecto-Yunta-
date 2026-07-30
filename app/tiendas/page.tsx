@@ -179,6 +179,7 @@ export default function TiendasPage() {
               <TableRow>
                 <TableHead>Código</TableHead>
                 <TableHead>Nombre</TableHead>
+                <TableHead>Dirección</TableHead>
                 <TableHead>Responsable</TableHead>
                 <TableHead>Sectores</TableHead>
                 <TableHead>Estado</TableHead>
@@ -188,7 +189,7 @@ export default function TiendasPage() {
             <TableBody>
               {data.tiendas.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     No hay tiendas registradas
                   </TableCell>
                 </TableRow>
@@ -197,6 +198,7 @@ export default function TiendasPage() {
                 <TableRow key={t.id}>
                   <TableCell className="font-mono text-xs">{t.codigo}</TableCell>
                   <TableCell>{t.nombre}</TableCell>
+                  <TableCell className="text-muted-foreground">{t.direccion || "-"}</TableCell>
                   <TableCell>{t.responsable || "-"}</TableCell>
                   <TableCell>{sectoresDe(t.id).length}</TableCell>
                   <TableCell>
