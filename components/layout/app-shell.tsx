@@ -18,10 +18,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
       <Sidebar open={drawerOpen} onClose={() => setDrawerOpen(false)} />
-      <div className="flex flex-1 flex-col nav:ml-60">
+      <div className="flex min-w-0 flex-1 flex-col nav:ml-60">
         <Topbar pathname={pathname} onAbrirMenu={() => setDrawerOpen(true)} />
         <BackupBanner />
-        <main className="flex-1 p-4 md:p-8">{children}</main>
+        <main className="min-w-0 flex-1 overflow-x-hidden p-4 md:p-8">{children}</main>
       </div>
     </div>
   );

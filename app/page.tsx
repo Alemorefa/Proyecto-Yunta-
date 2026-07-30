@@ -173,8 +173,8 @@ export default function InicioPage() {
         </p>
       </div>
 
-      {/* Accesos rápidos */}
-      <div>
+      {/* Accesos rápidos: solo en mobile (por debajo del breakpoint del drawer) */}
+      <div className="nav:hidden">
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Accesos rápidos
         </h3>

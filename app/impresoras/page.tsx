@@ -170,7 +170,7 @@ export default function ImpresorasPage() {
       </div>
 
       <p className="mb-4 text-sm text-muted-foreground">
-        La columna "Cálculo" es una interpretación de la planilla original (días desde el último movimiento
+        La columna &quot;Cálculo&quot; es una interpretación de la planilla original (días desde el último movimiento
         de esa misma impresora). Confirmá con el equipo si la lógica exacta coincide.
       </p>
 

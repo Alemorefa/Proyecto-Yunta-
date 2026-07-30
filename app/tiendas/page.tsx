@@ -162,7 +162,7 @@ export default function TiendasPage() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-semibold">Gestión de Tiendas</h3>
         {esAdmin && (
           <Button onClick={abrirNueva}>
@@ -226,7 +226,7 @@ export default function TiendasPage() {
             <DialogTitle>{editId ? "Editar Tienda" : "Nueva Tienda"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor="nombre">Nombre</Label>
                 <Input id="nombre" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />

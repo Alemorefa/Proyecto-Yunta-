@@ -167,7 +167,7 @@ export function Topbar({
           {buscadorAbierto && busqueda.trim() && (
             <div className="absolute right-0 top-11 z-50 w-72 overflow-hidden rounded-lg border bg-card shadow-lg">
               {resultados.length === 0 ? (
-                <p className="px-3 py-3 text-sm text-muted-foreground">Sin resultados para "{busqueda}"</p>
+                <p className="px-3 py-3 text-sm text-muted-foreground">Sin resultados para &quot;{busqueda}&quot;</p>
               ) : (
                 resultados.map((r, i) => (
                   <button

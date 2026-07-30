@@ -673,8 +673,8 @@ function InventarioContenido() {
           </DialogHeader>
 
           {/* Campos esenciales: lo que pidió el admin para el alta rápida */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
               <Label>Descripción</Label>
               <Input
                 autoFocus
@@ -721,7 +721,7 @@ function InventarioContenido() {
             <summary className="cursor-pointer select-none text-sm font-medium text-muted-foreground">
               Detalles adicionales (opcional)
             </summary>
-            <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label>Código interno</Label>
                 <Input
@@ -774,11 +774,11 @@ function InventarioContenido() {
                 <Label>Responsable</Label>
                 <Input value={form.responsable} onChange={(e) => setForm({ ...form, responsable: e.target.value })} />
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Label>Observaciones</Label>
                 <Input value={form.observaciones} onChange={(e) => setForm({ ...form, observaciones: e.target.value })} />
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Label>Foto</Label>
                 <div className="flex items-center gap-3">
                   {form.foto_url ? (
