@@ -390,6 +390,7 @@ function InventarioContenido() {
   }
 
   async function handleImportarArchivo(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!data) return;
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";

@@ -132,6 +132,7 @@ export default function TiendasPage() {
   }
 
   function toggleEstado(t: Tienda) {
+    if (!data) return;
     const vaAInactiva = t.estado === "activa";
     if (vaAInactiva) {
       const activosAsignados = data.activos.filter(

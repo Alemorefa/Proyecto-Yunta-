@@ -133,6 +133,7 @@ export default function ImpresorasPage() {
   }
 
   function exportar() {
+    if (!data) return;
     const filas = movimientos.map((m) => {
       const imp = impresora(m.impresora_id);
       return {
