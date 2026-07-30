@@ -25,8 +25,8 @@
     --radius: 0.6rem;
 
     /* Navy del sidebar/hero, fuera del sistema de shadcn (se usa como hex directo) */
-    --navy-900: #16213e;
-    --navy-800: #1b2a47;
+    --navy-900: #1a222e;
+    --navy-800: #232d3c;
   }
 
   /* Modo oscuro: solo 3 tonos (según la foto) — negro, gris oscuro y ese azul marino */
@@ -49,9 +49,9 @@
     --input: 0 0% 20%;
     --ring: 221 45% 40%;
 
-    /* Navy todavía más oscuro para que el sidebar/hero no compitan con el resto */
-    --navy-900: #0a0f1d;
-    --navy-800: #0f1830;
+    /* Mismo navy que en modo claro, para que el sidebar/hero se vean iguales en ambos temas */
+    --navy-900: #1a222e;
+    --navy-800: #232d3c;
   }
 }
 
