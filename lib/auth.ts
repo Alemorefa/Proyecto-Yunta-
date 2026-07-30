@@ -80,6 +80,28 @@ export function iniciarSesion(email: string, contrasena: string): ResultadoLogin
   return { ok: true };
 }
 
+// "Olvidé mi contraseña": como no hay backend ni verificación de email
+// todavía, esto simplemente le pisa la contraseña al usuario que coincide
+// con ese email y entra directo. No es seguro (cualquiera que sepa el email
+// de otro podría resetearle la contraseña) — es aceptable en este
+// prototipo local, pero hay que reemplazarlo por un flujo real (con
+// verificación) cuando se conecte Supabase Auth.
+export function recuperarContrasena(email: string, nuevaContrasena: string): ResultadoLogin {
+  const correo = email.trim().toLowerCase();
+  if (!correo || !nuevaContrasena) return { ok: false, error: "Completá email y la nueva contraseña" };
+
+  const db = getDB();
+  const usuario = db.usuarios.find((u) => u.email.trim().toLowerCase() === correo);
+  if (!usuario) return { ok: false, error: "No encontramos un usuario con ese email" };
+  if (usuario.activo === false) return { ok: false, error: "Este usuario está inactivo" };
+
+  usuario.contrasena = nuevaContrasena;
+  saveDB(db);
+
+  loguear(usuario);
+  return { ok: true };
+}
+
 // Primer uso de la app (sin ningún usuario cargado todavía): crea la cuenta
 // de administrador inicial y entra directo con ella.
 export function crearAdministradorInicial(nombre: string, email: string, contrasena: string): ResultadoLogin {
