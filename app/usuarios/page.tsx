@@ -14,7 +14,7 @@ import { Pencil, Plus, Power } from "lucide-react";
 import { getDB, saveDB, idGen, now, type Usuario, type DB, type RolUsuario } from "@/lib/db";
 import { useRolActivo } from "@/lib/role";
 
-const USUARIO_VACIO = { nombre: "", email: "", telefono: "", rol: "usuario" as RolUsuario };
+const USUARIO_VACIO = { nombre: "", email: "", telefono: "", rol: "usuario" as RolUsuario, contrasena: "" };
 
 export default function UsuariosPage() {
   const [data, setData] = useState<DB | null>(null);
@@ -43,7 +43,7 @@ export default function UsuariosPage() {
 
   function abrirEditar(u: Usuario) {
     setEditId(u.id);
-    setForm({ nombre: u.nombre, email: u.email, telefono: u.telefono || "", rol: u.rol });
+    setForm({ nombre: u.nombre, email: u.email, telefono: u.telefono || "", rol: u.rol, contrasena: "" });
     setOpen(true);
   }
 
@@ -52,13 +52,24 @@ export default function UsuariosPage() {
       toast.error("Nombre y email son obligatorios");
       return;
     }
+    if (!editId && !form.contrasena.trim()) {
+      toast.error("Asigná una contraseña para que pueda iniciar sesión");
+      return;
+    }
+    const { contrasena, ...resto } = form;
     const db = getDB();
     if (editId) {
       const idx = db.usuarios.findIndex((u) => u.id === editId);
-      if (idx !== -1) db.usuarios[idx] = { ...db.usuarios[idx], ...form };
+      if (idx !== -1) {
+        db.usuarios[idx] = {
+          ...db.usuarios[idx],
+          ...resto,
+          ...(contrasena.trim() ? { contrasena: contrasena.trim() } : {}),
+        };
+      }
       toast.success("Usuario actualizado");
     } else {
-      db.usuarios.push({ id: idGen(), activo: true, fecha_creacion: now(), ...form });
+      db.usuarios.push({ id: idGen(), activo: true, fecha_creacion: now(), contrasena: contrasena.trim(), ...resto });
       toast.success("Usuario creado");
     }
     saveDB(db);
@@ -179,6 +190,15 @@ export default function UsuariosPage() {
                   <SelectItem value="admin">Administrador</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label>Contraseña</Label>
+              <Input
+                type="password"
+                value={form.contrasena}
+                onChange={(e) => setForm({ ...form, contrasena: e.target.value })}
+                placeholder={editId ? "Dejar en blanco para no cambiarla" : "Necesaria para que pueda ingresar"}
+              />
             </div>
           </div>
           <DialogFooter>

@@ -7,6 +7,7 @@ import { Bell, Menu, Search, User, Settings, LogOut, Sun, Moon } from "lucide-re
 import { useSesionDisplay } from "@/lib/session";
 import { useTema } from "@/lib/theme";
 import { getDB, useUltimaEscritura } from "@/lib/db";
+import { cerrarSesion as cerrarSesionAuth } from "@/lib/auth";
 
 const TITLES: Record<string, string> = {
   "/": "Inicio",
@@ -132,7 +133,8 @@ export function Topbar({
 
   function cerrarSesion() {
     setMenuAbierto(false);
-    toast.info("Cerrar sesión estará disponible cuando conectemos autenticación real (Supabase Auth).");
+    cerrarSesionAuth();
+    toast.info("Sesión cerrada");
   }
 
   const inicial = sesion.nombre.trim().charAt(0).toUpperCase() || "?";

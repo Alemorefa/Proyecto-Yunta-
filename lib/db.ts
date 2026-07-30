@@ -101,6 +101,10 @@ export type Usuario = {
   rol: RolUsuario;
   activo?: boolean;
   fecha_creacion?: string;
+  // Contraseña del login local (texto plano en localStorage: es el
+  // prototipo, no una solución segura). Se reemplaza por Supabase Auth
+  // (hash + sesiones reales) más adelante.
+  contrasena?: string;
 };
 
 export type ConfigNegocio = {

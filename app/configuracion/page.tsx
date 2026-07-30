@@ -7,11 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X } from "lucide-react";
 import { getDB, saveDB, idGen, clearAllData, formatDate, type DB } from "@/lib/db";
-import { setRolActivo, useRolActivo, type RolUsuario } from "@/lib/role";
-import { setSesionDisplay, useSesionDisplay } from "@/lib/session";
+import { useRolActivo } from "@/lib/role";
+import { useSesionDisplay } from "@/lib/session";
+import { cerrarSesion as cerrarSesionAuth } from "@/lib/auth";
 import { marcarBackupHecho } from "@/lib/backup";
 import { obtenerCotizacionOficial, type CotizacionDolar } from "@/lib/dolar";
 
@@ -24,7 +24,6 @@ export default function ConfiguracionPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const { rol, esAdmin } = useRolActivo();
   const sesion = useSesionDisplay();
-  const [nombreSesion, setNombreSesion] = useState("");
 
   useEffect(() => {
     const db = getDB();
@@ -46,10 +45,6 @@ export default function ConfiguracionPage() {
       })
       .catch(() => setCotizacionError(true));
   }, []);
-
-  useEffect(() => {
-    setNombreSesion(sesion.nombre);
-  }, [sesion]);
 
   if (!data) return null;
 
@@ -118,17 +113,9 @@ export default function ConfiguracionPage() {
     e.target.value = "";
   }
 
-  function guardarSesion() {
-    setSesionDisplay({ nombre: nombreSesion.trim() || "Invitado", usuarioId: undefined });
-    toast.success("Sesión actualizada");
-  }
-
-  function elegirUsuario(usuarioId: string) {
-    const usuario = data?.usuarios.find((u) => u.id === usuarioId);
-    if (!usuario) return;
-    setSesionDisplay({ nombre: usuario.nombre, usuarioId: usuario.id });
-    setRolActivo(usuario.rol);
-    toast.success(`Ahora navegás como ${usuario.nombre}`);
+  function cerrarSesion() {
+    cerrarSesionAuth();
+    toast.info("Sesión cerrada");
   }
 
   function limpiarTodo() {
@@ -144,60 +131,21 @@ export default function ConfiguracionPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Sesión (prototipo)</CardTitle>
+          <CardTitle className="text-base">Sesión</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Todavía no hay autenticación real conectada (eso llega con Supabase Auth + Row Level Security). Mientras
-            tanto, elegí qué usuario de la lista está navegando: de ahí sale el nombre que se ve en el encabezado y
-            el rol (Administrador/Usuario) que define los permisos.
+            Para entrar ahora hace falta email y contraseña (login local del prototipo, en{" "}
+            <strong>Usuarios</strong> podés asignarle contraseña a cada uno). Cuando conectemos Supabase Auth esto se
+            reemplaza por un login real con permisos verificados en el servidor.
           </p>
 
-          {data.usuarios.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <Select value={sesion.usuarioId || ""} onValueChange={elegirUsuario}>
-                <SelectTrigger className="w-72"><SelectValue placeholder="Elegir usuario" /></SelectTrigger>
-                <SelectContent>
-                  {data.usuarios.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.nombre} · {u.rol === "admin" ? "Administrador" : "Usuario"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Badge variant={rol === "admin" ? "info" : "secondary"}>
-                Actual: {sesion.nombre} ({rol === "admin" ? "Administrador" : "Usuario"})
-              </Badge>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Todavía no cargaste usuarios. Andá a la sección <strong>Usuarios</strong> y creá el primero (elegí rol
-              Administrador) para poder seleccionarlo acá.
-            </p>
-          )}
-
-          <details className="rounded-md border px-3 py-2">
-            <summary className="cursor-pointer select-none text-sm font-medium text-muted-foreground">
-              Ajuste manual (por si todavía no hay usuarios cargados)
-            </summary>
-            <div className="mt-3 flex flex-wrap items-end gap-3">
-              <div>
-                <Label>Rol</Label>
-                <Select value={rol} onValueChange={(v) => setRolActivo(v as RolUsuario)}>
-                  <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Administrador</SelectItem>
-                    <SelectItem value="usuario">Usuario</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Nombre (encabezado)</Label>
-                <Input value={nombreSesion} onChange={(e) => setNombreSesion(e.target.value)} className="max-w-sm" />
-              </div>
-              <Button variant="outline" onClick={guardarSesion}>Guardar</Button>
-            </div>
-          </details>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Badge variant={rol === "admin" ? "info" : "secondary"}>
+              Sesión actual: {sesion.nombre} ({rol === "admin" ? "Administrador" : "Usuario"})
+            </Badge>
+            <Button variant="outline" onClick={cerrarSesion}>Cerrar sesión</Button>
+          </div>
         </CardContent>
       </Card>
 
