@@ -27,6 +27,9 @@
     /* Navy del sidebar/hero, fuera del sistema de shadcn (se usa como hex directo) */
     --navy-900: #1a222e;
     --navy-800: #232d3c;
+    /* Acento fijo del sidebar (título + ítem activo): no depende del tema,
+       porque el sidebar siempre tiene fondo navy en claro y oscuro. */
+    --sidebar-accent: #6ec1e4;
   }
 
   /* Modo oscuro: solo 3 tonos (según la foto) — negro, gris oscuro y ese azul marino */
@@ -52,6 +55,7 @@
     /* Mismo navy que en modo claro, para que el sidebar/hero se vean iguales en ambos temas */
     --navy-900: #1a222e;
     --navy-800: #232d3c;
+    --sidebar-accent: #6ec1e4;
   }
 }
 

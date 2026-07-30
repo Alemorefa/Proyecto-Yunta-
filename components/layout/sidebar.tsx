@@ -55,7 +55,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         )}
       >
         <div className="flex items-center justify-between border-b border-white/10 p-4 md:p-6">
-          <h1 className="text-lg font-bold text-primary">Inventarios</h1>
+          <h1 className="text-lg font-bold text-[var(--sidebar-accent)]">Inventarios</h1>
           <button
             className="rounded p-1 text-white/70 hover:bg-white/10 nav:hidden"
             onClick={onClose}
@@ -75,7 +75,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 onClick={onClose}
                 className={cn(
                   "flex items-center gap-3 border-l-2 border-transparent px-4 py-3 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white md:px-6",
-                  active && "border-primary bg-primary/15 text-primary"
+                  active && "border-[var(--sidebar-accent)] bg-[var(--sidebar-accent)]/15 text-[var(--sidebar-accent)]"
                 )}
               >
                 <Icon className="h-5 w-5 shrink-0" />
