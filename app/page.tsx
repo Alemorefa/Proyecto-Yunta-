@@ -219,7 +219,7 @@ export default function InicioPage() {
                 <p className="mb-3 text-3xl font-bold text-foreground">{r.value}</p>
                 <Link
                   href={r.href}
-                  className="text-xs font-medium text-primary hover:underline"
+                  className="text-xs font-medium text-[hsl(var(--link))] hover:underline"
                 >
                   {r.cta} →
                 </Link>

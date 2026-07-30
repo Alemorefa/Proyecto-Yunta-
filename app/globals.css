@@ -23,6 +23,9 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.6rem;
+    /* Color de los links de texto tipo "Ver más →" (distinto de --primary,
+       que se usa para botones y necesita más contraste como fondo). */
+    --link: 221.2 83.2% 53.3%;
 
     /* Navy del sidebar/hero, fuera del sistema de shadcn (se usa como hex directo) */
     --navy-900: #1a222e;
@@ -51,6 +54,9 @@
     --border: 0 0% 20%;
     --input: 0 0% 20%;
     --ring: 221 45% 40%;
+    /* Más claro y menos saturado que --primary, para que el texto se lea
+       bien sobre el fondo casi negro (según la referencia compartida). */
+    --link: 216 24% 52%;
 
     /* Mismo navy que en modo claro, para que el sidebar/hero se vean iguales en ambos temas */
     --navy-900: #1a222e;

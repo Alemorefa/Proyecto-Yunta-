@@ -8,17 +8,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { X } from "lucide-react";
+import { RefreshCw, X } from "lucide-react";
 import { getDB, saveDB, idGen, clearAllData, type DB } from "@/lib/db";
 import { setRolActivo, useRolActivo, type RolUsuario } from "@/lib/role";
 import { setSesionDisplay, useSesionDisplay } from "@/lib/session";
 import { marcarBackupHecho } from "@/lib/backup";
+import { obtenerCotizacionOficial } from "@/lib/dolar";
+import { cn } from "@/lib/utils";
 
 export default function ConfiguracionPage() {
   const [data, setData] = useState<DB | null>(null);
   const [nombreNegocio, setNombreNegocio] = useState("");
   const [cotizacion, setCotizacion] = useState("");
   const [nuevaCategoria, setNuevaCategoria] = useState("");
+  const [actualizandoCotizacion, setActualizandoCotizacion] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const { rol } = useRolActivo();
   const sesion = useSesionDisplay();
@@ -43,6 +46,19 @@ export default function ConfiguracionPage() {
     saveDB(db);
     setData(db);
     toast.success("Configuración guardada");
+  }
+
+  async function actualizarCotizacion() {
+    setActualizandoCotizacion(true);
+    try {
+      const { venta } = await obtenerCotizacionOficial();
+      setCotizacion(String(venta));
+      toast.success(`Cotización actualizada: $${venta} (dólar oficial, vía DolarApi.com)`);
+    } catch {
+      toast.error("No se pudo obtener la cotización. Revisá tu conexión e intentá de nuevo.");
+    } finally {
+      setActualizandoCotizacion(false);
+    }
   }
 
   function agregarCategoria() {
@@ -196,7 +212,32 @@ export default function ConfiguracionPage() {
           </div>
           <div>
             <Label>Cotización USD (ARS por 1 USD)</Label>
-            <Input type="number" value={cotizacion} onChange={(e) => setCotizacion(e.target.value)} />
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                value={cotizacion}
+                onChange={(e) => setCotizacion(e.target.value)}
+                className="max-w-xs"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={actualizarCotizacion}
+                disabled={actualizandoCotizacion}
+              >
+                <RefreshCw className={cn("h-4 w-4", actualizandoCotizacion && "animate-spin")} />
+                Actualizar (dólar oficial)
+              </Button>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Trae el valor de venta del dólar oficial desde{" "}
+              <a href="https://dolarapi.com" target="_blank" rel="noreferrer" className="underline">
+                DolarApi.com
+              </a>{" "}
+              (API comunitaria, no es un dato oficial del BCRA). Después de traerlo, tocá &quot;Guardar
+              Configuración&quot; para dejarlo guardado como referencia (cada ítem del inventario sigue
+              guardando su propio precio en ARS y en USD por separado).
+            </p>
           </div>
           <Button onClick={guardarConfig}>Guardar Configuración</Button>
         </CardContent>
