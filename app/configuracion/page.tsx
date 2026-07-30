@@ -8,20 +8,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RefreshCw, X } from "lucide-react";
-import { getDB, saveDB, idGen, clearAllData, type DB } from "@/lib/db";
+import { X } from "lucide-react";
+import { getDB, saveDB, idGen, clearAllData, formatDate, type DB } from "@/lib/db";
 import { setRolActivo, useRolActivo, type RolUsuario } from "@/lib/role";
 import { setSesionDisplay, useSesionDisplay } from "@/lib/session";
 import { marcarBackupHecho } from "@/lib/backup";
-import { obtenerCotizacionOficial } from "@/lib/dolar";
-import { cn } from "@/lib/utils";
+import { obtenerCotizacionOficial, type CotizacionDolar } from "@/lib/dolar";
 
 export default function ConfiguracionPage() {
   const [data, setData] = useState<DB | null>(null);
   const [nombreNegocio, setNombreNegocio] = useState("");
-  const [cotizacion, setCotizacion] = useState("");
   const [nuevaCategoria, setNuevaCategoria] = useState("");
-  const [actualizandoCotizacion, setActualizandoCotizacion] = useState(false);
+  const [cotizacionInfo, setCotizacionInfo] = useState<CotizacionDolar | null>(null);
+  const [cotizacionError, setCotizacionError] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const { rol } = useRolActivo();
   const sesion = useSesionDisplay();
@@ -31,7 +30,21 @@ export default function ConfiguracionPage() {
     const db = getDB();
     setData(db);
     setNombreNegocio(db.config.nombre || "");
-    setCotizacion((db.config.cotizacion_usd || 0).toString());
+  }, []);
+
+  // Cotización automática: se trae sola al entrar a esta pantalla y se
+  // guarda directo (sin que haga falta tocar nada ni tocar "Guardar").
+  useEffect(() => {
+    obtenerCotizacionOficial()
+      .then((info) => {
+        setCotizacionInfo(info);
+        setCotizacionError(false);
+        const db = getDB();
+        db.config = { ...db.config, cotizacion_usd: info.venta };
+        saveDB(db);
+        setData(db);
+      })
+      .catch(() => setCotizacionError(true));
   }, []);
 
   useEffect(() => {
@@ -42,23 +55,10 @@ export default function ConfiguracionPage() {
 
   function guardarConfig() {
     const db = getDB();
-    db.config = { nombre: nombreNegocio.trim(), cotizacion_usd: parseFloat(cotizacion) || 0 };
+    db.config = { ...db.config, nombre: nombreNegocio.trim() };
     saveDB(db);
     setData(db);
     toast.success("Configuración guardada");
-  }
-
-  async function actualizarCotizacion() {
-    setActualizandoCotizacion(true);
-    try {
-      const { venta } = await obtenerCotizacionOficial();
-      setCotizacion(String(venta));
-      toast.success(`Cotización actualizada: $${venta} (dólar oficial, vía DolarApi.com)`);
-    } catch {
-      toast.error("No se pudo obtener la cotización. Revisá tu conexión e intentá de nuevo.");
-    } finally {
-      setActualizandoCotizacion(false);
-    }
   }
 
   function agregarCategoria() {
@@ -211,32 +211,23 @@ export default function ConfiguracionPage() {
             <Input value={nombreNegocio} onChange={(e) => setNombreNegocio(e.target.value)} />
           </div>
           <div>
-            <Label>Cotización USD (ARS por 1 USD)</Label>
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                value={cotizacion}
-                onChange={(e) => setCotizacion(e.target.value)}
-                className="max-w-xs"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={actualizarCotizacion}
-                disabled={actualizandoCotizacion}
-              >
-                <RefreshCw className={cn("h-4 w-4", actualizandoCotizacion && "animate-spin")} />
-                Actualizar (dólar oficial)
-              </Button>
+            <Label>Cotización USD (ARS por 1 USD) · automática</Label>
+            <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
+              <span className="text-lg font-semibold text-foreground">
+                {data.config.cotizacion_usd ? `$${data.config.cotizacion_usd}` : "—"}
+              </span>
+              {cotizacionInfo && (
+                <Badge variant="success">Actualizado {formatDate(cotizacionInfo.fechaActualizacion)}</Badge>
+              )}
+              {cotizacionError && <Badge variant="destructive">No se pudo actualizar ahora</Badge>}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Trae el valor de venta del dólar oficial desde{" "}
+              Se trae sola (dólar oficial, valor de venta) cada vez que entrás a esta pantalla, desde{" "}
               <a href="https://dolarapi.com" target="_blank" rel="noreferrer" className="underline">
                 DolarApi.com
               </a>{" "}
-              (API comunitaria, no es un dato oficial del BCRA). Después de traerlo, tocá &quot;Guardar
-              Configuración&quot; para dejarlo guardado como referencia (cada ítem del inventario sigue
-              guardando su propio precio en ARS y en USD por separado).
+              (API comunitaria, no es un dato oficial del BCRA). Es solo de referencia: cada ítem del
+              inventario sigue guardando su propio precio en ARS y en USD por separado.
             </p>
           </div>
           <Button onClick={guardarConfig}>Guardar Configuración</Button>
