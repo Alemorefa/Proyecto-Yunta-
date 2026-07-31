@@ -21,13 +21,10 @@ import {
   Pencil,
   ArrowRightLeft,
 } from "lucide-react";
-import {
-  getDB,
-  seedInitialData,
-  formatDate,
-  type DB,
-  type AccionMovimiento,
-} from "@/lib/db";
+import { formatDate, type AccionMovimiento } from "@/lib/db";
+import { listarTiendas, listarCategorias, type Tienda, type Categoria } from "@/lib/catalogos";
+import { listarActivos, type Activo } from "@/lib/inventario-data";
+import { listarMovimientos, listarUsuariosBasico, type Movimiento, type UsuarioBasico } from "@/lib/movimientos-data";
 import { useRolActivo } from "@/lib/role";
 import { getUltimoBackup } from "@/lib/backup";
 
@@ -56,13 +53,26 @@ function iconoAccion(accion: AccionMovimiento) {
 
 export default function InicioPage() {
   const router = useRouter();
-  const [data, setData] = useState<DB | null>(null);
+  const [tiendas, setTiendas] = useState<Tienda[]>([]);
+  const [activos, setActivos] = useState<Activo[]>([]);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
+  const [usuarios, setUsuarios] = useState<UsuarioBasico[]>([]);
+  const [cargado, setCargado] = useState(false);
   const [ultimoBackup, setUltimoBackup] = useState<string | null>(null);
   const { esAdmin } = useRolActivo();
 
   useEffect(() => {
-    seedInitialData();
-    setData(getDB());
+    Promise.all([listarTiendas(), listarActivos(), listarCategorias(), listarMovimientos(), listarUsuariosBasico()])
+      .then(([t, a, c, m, u]) => {
+        setTiendas(t);
+        setActivos(a);
+        setCategorias(c);
+        setMovimientos(m);
+        setUsuarios(u);
+        setCargado(true);
+      })
+      .catch((err) => toast.error("No se pudo cargar el inicio: " + (err as Error).message));
     setUltimoBackup(getUltimoBackup());
   }, []);
 
@@ -96,58 +106,59 @@ export default function InicioPage() {
     () => [
       {
         label: "Tiendas",
-        value: data?.tiendas.length ?? 0,
+        value: tiendas.length,
         icon: Store,
         href: "/tiendas",
         cta: "Gestionar tiendas",
       },
       {
         label: "Activos",
-        value: data?.activos.length ?? 0,
+        value: activos.length,
         icon: Package,
         href: "/inventario",
         cta: "Ver inventario",
       },
       {
         label: "Categorías",
-        value: data?.categorias.length ?? 0,
+        value: categorias.length,
         icon: FolderCog,
         href: "/configuracion",
         cta: "Editar categorías",
       },
       {
         label: "Usuarios",
-        value: data?.usuarios.length ?? 0,
+        value: usuarios.length,
         icon: Users,
         href: "/usuarios",
         cta: "Ver usuarios",
       },
     ],
-    [data]
+    [tiendas, activos, categorias, usuarios]
   );
 
   const ultimosMovimientos = useMemo(() => {
-    if (!data) return [];
-    return [...data.movimientos].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
-  }, [data]);
+    return [...movimientos].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
+  }, [movimientos]);
+
+  const nombreUsuario = (id: string | null) => (id ? usuarios.find((u) => u.id === id)?.nombre || "-" : "-");
 
   const pasos = useMemo(
     () => [
       {
         label: "Creá tu primera tienda",
-        done: (data?.tiendas.length ?? 0) > 0,
+        done: tiendas.length > 0,
         href: "/tiendas",
         cta: "Ir a Tiendas",
       },
       {
         label: "Cargá tu primer activo",
-        done: (data?.activos.length ?? 0) > 0,
+        done: activos.length > 0,
         href: "/inventario?abrir=nuevo",
         cta: "Agregar ítem",
       },
       {
         label: "Agregá a tu equipo",
-        done: (data?.usuarios.length ?? 0) > 0,
+        done: usuarios.length > 1,
         href: "/usuarios",
         cta: "Ir a Usuarios",
       },
@@ -158,11 +169,11 @@ export default function InicioPage() {
         cta: "Ir a Configuración",
       },
     ],
-    [data, ultimoBackup]
+    [tiendas, activos, usuarios, ultimoBackup]
   );
   const pasosPendientes = pasos.filter((p) => !p.done);
 
-  if (!data) return null;
+  if (!cargado) return null;
 
   return (
     <div className="space-y-6">
@@ -247,7 +258,7 @@ export default function InicioPage() {
               <ul className="space-y-3">
                 {ultimosMovimientos.map((m) => {
                   const Icon = iconoAccion(m.accion);
-                  const activo = data.activos.find((a) => a.id === m.activo_id);
+                  const activo = activos.find((a) => a.id === m.asset_id);
                   return (
                     <li key={m.id} className="flex items-start gap-3 text-sm">
                       <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
@@ -258,7 +269,7 @@ export default function InicioPage() {
                           {m.accion} · {activo?.nombre ?? "Activo eliminado"}
                         </span>
                         <span className="block truncate text-xs text-muted-foreground">
-                          {m.observacion || "Sin observación"} · {m.usuario}
+                          {m.observacion || "Sin observación"} · {nombreUsuario(m.usuario_id)}
                         </span>
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground">{formatDate(m.fecha)}</span>

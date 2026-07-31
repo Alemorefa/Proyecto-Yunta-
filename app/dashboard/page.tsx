@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getDB, formatDate, valorTotalARS as calcARS, valorTotalUSD as calcUSD, type DB } from "@/lib/db";
+import { formatDate } from "@/lib/db";
+import { listarTiendas, listarCategorias, type Tienda, type Categoria } from "@/lib/catalogos";
+import { listarActivos, valorTotalARS as calcARS, valorTotalUSD as calcUSD, type Activo } from "@/lib/inventario-data";
+import { listarMovimientos, type Movimiento } from "@/lib/movimientos-data";
 import { BarChart } from "@/components/charts/bar-chart";
 import { DonutChart } from "@/components/charts/donut-chart";
 
@@ -22,21 +26,31 @@ function money(n: number) {
 }
 
 export default function DashboardPage() {
-  const [data, setData] = useState<DB | null>(null);
+  const [activos, setActivos] = useState<Activo[] | null>(null);
+  const [tiendas, setTiendas] = useState<Tienda[]>([]);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
   const [filtroTienda, setFiltroTienda] = useState<string>("todas");
 
   useEffect(() => {
-    setData(getDB());
+    Promise.all([listarActivos(), listarTiendas(), listarCategorias(), listarMovimientos()])
+      .then(([a, t, c, m]) => {
+        setActivos(a);
+        setTiendas(t);
+        setCategorias(c);
+        setMovimientos(m);
+      })
+      .catch((err) => toast.error("No se pudo cargar el panel: " + (err as Error).message));
   }, []);
 
   const stats = useMemo(() => {
-    if (!data) return null;
+    if (!activos) return null;
 
-    const activos = data.activos.filter(
-      (a) => filtroTienda === "todas" || a.tienda_id === filtroTienda
+    const activosFiltrados = activos.filter(
+      (a) => filtroTienda === "todas" || a.store_id === filtroTienda
     );
-    const activosVigentes = activos.filter((a) => a.estado !== "Baja");
-    const bajas = activos.filter((a) => a.estado === "Baja");
+    const activosVigentes = activosFiltrados.filter((a) => a.estado !== "Baja");
+    const bajas = activosFiltrados.filter((a) => a.estado === "Baja");
 
     // Cada ítem guarda su propio precio ARS y precio USD (no se convierte
     // uno a partir del otro), así que los totales son sumas independientes.
@@ -48,22 +62,19 @@ export default function DashboardPage() {
     const sumaCantidad = (lista: typeof activosVigentes) =>
       lista.reduce((acc, a) => acc + (a.cantidad || 1), 0);
 
-    const catNombre = (id?: string | null) => data.categorias.find((c) => c.id === id)?.nombre;
-    const muebles = sumaCantidad(activosVigentes.filter((a) => catNombre(a.categoria_id) === "Muebles"));
-    const insumos = sumaCantidad(activosVigentes.filter((a) => catNombre(a.categoria_id) === "Insumos"));
+    const catNombre = (id?: string | null) => categorias.find((c) => c.id === id)?.nombre;
+    const muebles = sumaCantidad(activosVigentes.filter((a) => catNombre(a.category_id) === "Muebles"));
+    const insumos = sumaCantidad(activosVigentes.filter((a) => catNombre(a.category_id) === "Insumos"));
     const totalUnidades = sumaCantidad(activosVigentes);
     const equipos = totalUnidades - muebles - insumos;
 
-    const activoIds = new Set(activos.map((a) => a.id));
-    const ultimosMov = [...data.movimientos]
-      .filter((m) => activoIds.has(m.activo_id))
-      .reverse()
-      .slice(0, 8);
+    const activoIds = new Set(activosFiltrados.map((a) => a.id));
+    const ultimosMov = [...movimientos].filter((m) => activoIds.has(m.asset_id)).slice(0, 8);
 
     // Barras: cantidad de unidades por categoría (top 8).
     const porCategoria = new Map<string, number>();
     activosVigentes.forEach((a) => {
-      const nombre = catNombre(a.categoria_id) || "Sin categoría";
+      const nombre = catNombre(a.category_id) || "Sin categoría";
       porCategoria.set(nombre, (porCategoria.get(nombre) || 0) + (a.cantidad || 1));
     });
     const categoriaData = [...porCategoria.entries()]
@@ -82,7 +93,7 @@ export default function DashboardPage() {
       valorTotalARS,
       valorTotalUSD,
       totalActivos: totalUnidades,
-      totalTiendas: data.tiendas.length,
+      totalTiendas: tiendas.length,
       muebles,
       insumos,
       equipos,
@@ -91,9 +102,9 @@ export default function DashboardPage() {
       categoriaData,
       estadoData,
     };
-  }, [data, filtroTienda]);
+  }, [activos, categorias, tiendas, movimientos, filtroTienda]);
 
-  if (!data || !stats) return null;
+  if (!activos || !stats) return null;
 
   const cards = [
     { label: "Valor total (ARS)", value: `$ ${money(stats.valorTotalARS)}` },
@@ -116,7 +127,7 @@ export default function DashboardPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todas">Todas las sucursales</SelectItem>
-            {data.tiendas.map((t) => (
+            {tiendas.map((t) => (
               <SelectItem key={t.id} value={t.id}>
                 {t.nombre}
               </SelectItem>
@@ -183,7 +194,7 @@ export default function DashboardPage() {
                   </TableRow>
                 )}
                 {stats.ultimosMov.map((m) => {
-                  const activo = data.activos.find((a) => a.id === m.activo_id);
+                  const activo = activos.find((a) => a.id === m.asset_id);
                   return (
                     <TableRow key={m.id}>
                       <TableCell>{activo ? activo.nombre : "-"}</TableCell>
