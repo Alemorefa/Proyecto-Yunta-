@@ -348,3 +348,55 @@ create policy "insertar_cotizacion" on public.exchange_rates for insert
 
 -- roles: de solo lectura para todos, nadie escribe desde la app (se
 -- administra a mano si hace falta un rol nuevo).
+
+-- ============================================================================
+-- Cuentas desactivadas: bloqueo también a nivel de base de datos.
+-- La app ya cierra la sesión sola si activo=false, pero el token del
+-- navegador sigue siendo técnicamente válido hasta que expira solo. Esto
+-- es el refuerzo real: ni con ese token viejo se puede leer ni escribir
+-- nada si la cuenta está desactivada.
+-- ============================================================================
+
+-- rol_actual() ahora exige activo = true. Si está desactivado, devuelve
+-- null → es_admin() da false automáticamente, así que todas las políticas
+-- de escritura (que dependen de es_admin()) quedan bloqueadas solas.
+create or replace function public.rol_actual()
+returns text
+language sql
+security definer
+stable
+as $$
+  select role_id from public.users where id = auth.uid() and activo = true;
+$$;
+
+-- Chequeo de lectura: cualquier cuenta activa puede leer, las desactivadas no.
+create or replace function public.mi_activo()
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select coalesce((select activo from public.users where id = auth.uid()), false);
+$$;
+
+do $$
+declare
+  t text;
+begin
+  for t in
+    select unnest(array[
+      'roles', 'users', 'stores', 'sectors', 'categories', 'suppliers',
+      'assets', 'asset_movements', 'asset_history', 'asset_photos',
+      'settings', 'exchange_rates', 'printers', 'printer_movements'
+    ])
+  loop
+    execute format('drop policy if exists "select_autenticados" on public.%I', t);
+    execute format(
+      'create policy "select_autenticados" on public.%I for select to authenticated using (public.mi_activo())', t
+    );
+  end loop;
+end $$;
+
+drop policy if exists "insertar_cotizacion" on public.exchange_rates;
+create policy "insertar_cotizacion" on public.exchange_rates for insert
+  to authenticated with check (public.mi_activo());

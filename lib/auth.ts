@@ -11,6 +11,8 @@
 // ascender después).
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 
 type ResultadoLogin = { ok: true } | { ok: false; error: string };
@@ -21,15 +23,33 @@ export function useAutenticado() {
   const [auth, setAuth] = useState<boolean | null>(null);
 
   useEffect(() => {
-    let activo = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (activo) setAuth(!!data.session);
-    });
+    let vivo = true;
+
+    // Además de "¿hay sesión?", chequeamos que la cuenta siga activa en
+    // public.users. Si un admin la desactivó, la echamos acá aunque la
+    // sesión del navegador siga técnicamente válida.
+    async function evaluar(session: Session | null) {
+      if (!session) {
+        if (vivo) setAuth(false);
+        return;
+      }
+      const { data } = await supabase.from("users").select("activo").eq("id", session.user.id).single();
+      if (!vivo) return;
+      if (data && data.activo === false) {
+        await supabase.auth.signOut();
+        toast.error("Tu cuenta fue desactivada. Consultá con un administrador.");
+        setAuth(false);
+        return;
+      }
+      setAuth(true);
+    }
+
+    supabase.auth.getSession().then(({ data }) => evaluar(data.session));
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (activo) setAuth(!!session);
+      evaluar(session);
     });
     return () => {
-      activo = false;
+      vivo = false;
       sub.subscription.unsubscribe();
     };
   }, []);
