@@ -139,6 +139,11 @@ export async function darDeBajaActivo(id: string, motivo: string): Promise<void>
   if (error) throw error;
 }
 
+export async function cambiarEstadoActivo(id: string, estado: EstadoActivo): Promise<void> {
+  const { error } = await supabase.from("assets").update({ estado }).eq("id", id);
+  if (error) throw error;
+}
+
 // Busca un proveedor por nombre (sin importar mayúsculas) y si no existe lo
 // crea. Devuelve null si el nombre viene vacío.
 export async function buscarOCrearProveedor(nombre: string): Promise<string | null> {
