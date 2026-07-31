@@ -12,19 +12,33 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ArrowLeftRight, Download, Pencil, Plus, Printer, QrCode, Trash2, Upload } from "lucide-react";
+import { idGen, ESTADOS_ACTIVO, type EstadoActivo } from "@/lib/db";
 import {
-  getDB,
-  saveDB,
-  idGen,
-  now,
-  registrarMovimiento,
+  listarTiendas,
+  listarSectores,
+  listarCategorias,
+  type Tienda,
+  type Sector,
+  type Categoria,
+} from "@/lib/catalogos";
+import {
+  listarActivos,
+  listarUltimaFotoPorActivo,
+  listarProveedores,
+  existeCodigoInterno,
+  crearActivo,
+  actualizarActivo,
+  transferirActivo,
+  darDeBajaActivo,
+  registrarMovimientoActivo,
+  reemplazarFotoActivo,
+  buscarOCrearProveedor,
   valorTotalARS,
   valorTotalUSD,
-  ESTADOS_ACTIVO,
   type Activo,
-  type DB,
-  type EstadoActivo,
-} from "@/lib/db";
+  type ActivoInput,
+  type Proveedor,
+} from "@/lib/inventario-data";
 import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
 import { exportarExcel, leerExcel } from "@/lib/excel";
@@ -88,7 +102,13 @@ const PAGE_SIZE = 25;
 
 function InventarioContenido() {
   const searchParams = useSearchParams();
-  const [data, setData] = useState<DB | null>(null);
+  const [activos, setActivos] = useState<Activo[] | null>(null);
+  const [tiendas, setTiendas] = useState<Tienda[]>([]);
+  const [sectores, setSectores] = useState<Sector[]>([]);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [proveedores, setProveedores] = useState<Proveedor[]>([]);
+  const [fotos, setFotos] = useState<Map<string, string>>(new Map());
+
   const [filtroTienda, setFiltroTienda] = useState("todas");
   const [filtroCategoria, setFiltroCategoria] = useState("todas");
   const [filtroEstado, setFiltroEstado] = useState("todas");
@@ -99,6 +119,7 @@ function InventarioContenido() {
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(ACTIVO_VACIO);
+  const [guardando, setGuardando] = useState(false);
 
   const [transferir, setTransferir] = useState<Activo | null>(null);
   const [nuevaTienda, setNuevaTienda] = useState("");
@@ -112,13 +133,32 @@ function InventarioContenido() {
 
   const [importOpen, setImportOpen] = useState(false);
   const [importPreview, setImportPreview] = useState<FilaImportada[]>([]);
+  const [importando, setImportando] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
 
   const { esAdmin } = useRolActivo();
   const sesion = useSesionDisplay();
 
+  async function cargar() {
+    const [a, t, s, c, p, f] = await Promise.all([
+      listarActivos(),
+      listarTiendas(),
+      listarSectores(),
+      listarCategorias(),
+      listarProveedores(),
+      listarUltimaFotoPorActivo(),
+    ]);
+    setActivos(a);
+    setTiendas(t);
+    setSectores(s);
+    setCategorias(c);
+    setProveedores(p);
+    setFotos(f);
+  }
+
   useEffect(() => {
-    setData(getDB());
+    cargar().catch((err) => toast.error("No se pudo cargar el inventario: " + (err as Error).message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Acceso directo desde los accesos rápidos de Inicio (?abrir=nuevo) o el
@@ -131,11 +171,11 @@ function InventarioContenido() {
   }, [searchParams, esAdmin]);
 
   const activosFiltrados = useMemo(() => {
-    if (!data) return [];
+    if (!activos) return [];
     const q = busqueda.trim().toLowerCase();
-    return data.activos.filter((a) => {
-      if (filtroTienda !== "todas" && a.tienda_id !== filtroTienda) return false;
-      if (filtroCategoria !== "todas" && a.categoria_id !== filtroCategoria) return false;
+    return activos.filter((a) => {
+      if (filtroTienda !== "todas" && a.store_id !== filtroTienda) return false;
+      if (filtroCategoria !== "todas" && a.category_id !== filtroCategoria) return false;
       if (filtroEstado !== "todas" && a.estado !== filtroEstado) return false;
       if (q) {
         const coincide =
@@ -147,20 +187,21 @@ function InventarioContenido() {
       }
       return true;
     });
-  }, [data, filtroTienda, filtroCategoria, filtroEstado, busqueda]);
+  }, [activos, filtroTienda, filtroCategoria, filtroEstado, busqueda]);
 
   useEffect(() => {
     setLimite(PAGE_SIZE);
   }, [filtroTienda, filtroCategoria, filtroEstado, busqueda]);
 
-  if (!data) return null;
+  if (!activos) return null;
 
   const activosVisibles = activosFiltrados.slice(0, limite);
 
-  const nombreTienda = (id?: string | null) => data.tiendas.find((t) => t.id === id)?.nombre || "-";
-  const nombreSector = (id?: string | null) => data.sectores.find((s) => s.id === id)?.nombre || "-";
-  const nombreCategoria = (id?: string | null) => data.categorias.find((c) => c.id === id)?.nombre || "-";
-  const sectoresDeTienda = (tiendaId: string) => data.sectores.filter((s) => s.tienda_id === tiendaId);
+  const nombreTienda = (id?: string | null) => tiendas.find((t) => t.id === id)?.nombre || "-";
+  const nombreSector = (id?: string | null) => sectores.find((s) => s.id === id)?.nombre || "-";
+  const nombreCategoria = (id?: string | null) => categorias.find((c) => c.id === id)?.nombre || "-";
+  const nombreProveedor = (id?: string | null) => proveedores.find((p) => p.id === id)?.nombre || "";
+  const sectoresDeTienda = (tiendaId: string) => sectores.filter((s) => s.store_id === tiendaId);
 
   function abrirNuevo() {
     setEditId(null);
@@ -174,21 +215,21 @@ function InventarioContenido() {
       codigo_interno: a.codigo_interno,
       nombre: a.nombre,
       descripcion: a.descripcion || "",
-      categoria_id: a.categoria_id || "",
+      categoria_id: a.category_id || "",
       marca: a.marca || "",
       modelo: a.modelo || "",
       numero_serie: a.numero_serie || "",
       estado: a.estado,
       fecha_compra: a.fecha_compra || "",
-      proveedor: a.proveedor || "",
+      proveedor: nombreProveedor(a.supplier_id),
       cantidad: (a.cantidad ?? 1).toString(),
       precio_ars: a.precio_ars?.toString() || "",
       precio_usd: a.precio_usd?.toString() || "",
-      tienda_id: a.tienda_id || "",
+      tienda_id: a.store_id || "",
       sector_id: a.sector_id || "",
       responsable: a.responsable || "",
       observaciones: a.observaciones || "",
-      foto_url: a.foto_url || "",
+      foto_url: fotos.get(a.id) || "",
     });
     setOpen(true);
   }
@@ -208,104 +249,112 @@ function InventarioContenido() {
     e.target.value = "";
   }
 
-  function guardar() {
+  async function guardar() {
     if (!form.nombre.trim()) {
       toast.error("La descripción del ítem es obligatoria");
       return;
     }
-    const db = getDB();
 
-    const codigoFinal = form.codigo_interno.trim() || idGen().toUpperCase();
-    const duplicado = db.activos.some(
-      (a) => a.id !== editId && a.codigo_interno.trim().toLowerCase() === codigoFinal.toLowerCase()
-    );
-    if (duplicado) {
-      toast.error(`Ya existe un ítem con el código "${codigoFinal}". Usá otro código interno.`);
-      return;
-    }
+    setGuardando(true);
+    try {
+      const codigoFinal = form.codigo_interno.trim() || idGen().toUpperCase();
+      const duplicado = await existeCodigoInterno(codigoFinal, editId || undefined);
+      if (duplicado) {
+        toast.error(`Ya existe un ítem con el código "${codigoFinal}". Usá otro código interno.`);
+        setGuardando(false);
+        return;
+      }
 
-    const payload = {
-      codigo_interno: codigoFinal,
-      nombre: form.nombre.trim(),
-      descripcion: form.descripcion,
-      categoria_id: form.categoria_id || null,
-      marca: form.marca,
-      modelo: form.modelo,
-      numero_serie: form.numero_serie,
-      estado: form.estado,
-      fecha_compra: form.fecha_compra,
-      proveedor: form.proveedor,
-      cantidad: parseInt(form.cantidad) || 1,
-      precio_ars: parseFloat(form.precio_ars) || 0,
-      precio_usd: parseFloat(form.precio_usd) || 0,
-      tienda_id: form.tienda_id || null,
-      sector_id: form.sector_id || null,
-      responsable: form.responsable,
-      observaciones: form.observaciones,
-      foto_url: form.foto_url || undefined,
-    };
+      const supplierId = await buscarOCrearProveedor(form.proveedor);
 
-    if (editId) {
-      const idx = db.activos.findIndex((a) => a.id === editId);
-      if (idx !== -1) {
-        const estadoCambio = db.activos[idx].estado !== payload.estado;
-        db.activos[idx] = { ...db.activos[idx], ...payload };
-        registrarMovimiento(db, {
+      const input: ActivoInput = {
+        codigo_interno: codigoFinal,
+        nombre: form.nombre,
+        descripcion: form.descripcion,
+        categoria_id: form.categoria_id || null,
+        marca: form.marca,
+        modelo: form.modelo,
+        numero_serie: form.numero_serie,
+        estado: form.estado,
+        fecha_compra: form.fecha_compra,
+        supplier_id: supplierId,
+        cantidad: parseInt(form.cantidad) || 1,
+        precio_ars: parseFloat(form.precio_ars) || 0,
+        precio_usd: parseFloat(form.precio_usd) || 0,
+        tienda_id: form.tienda_id || null,
+        sector_id: form.sector_id || null,
+        responsable: form.responsable,
+        observaciones: form.observaciones,
+      };
+
+      let assetId = editId;
+
+      if (editId) {
+        const anterior = activos.find((a) => a.id === editId);
+        const estadoCambio = anterior?.estado !== input.estado;
+        await actualizarActivo(editId, input);
+        await registrarMovimientoActivo({
           activo_id: editId,
           accion: estadoCambio ? "Cambio de estado" : "Modificación",
-          observacion: estadoCambio ? `Estado: ${payload.estado}` : "Datos actualizados",
-          usuario: sesion.nombre,
+          observacion: estadoCambio ? `Estado: ${input.estado}` : "Datos actualizados",
+          usuario_id: sesion.usuarioId ?? null,
         });
+        toast.success("Ítem actualizado");
+      } else {
+        const nuevo = await crearActivo(input);
+        assetId = nuevo.id;
+        await registrarMovimientoActivo({
+          activo_id: nuevo.id,
+          accion: "Alta",
+          observacion: "Alta de ítem",
+          usuario_id: sesion.usuarioId ?? null,
+        });
+        toast.success("Ítem agregado");
       }
-      toast.success("Ítem actualizado");
-    } else {
-      const nuevo: Activo = { id: idGen(), fecha_creacion: now(), ...payload };
-      db.activos.push(nuevo);
-      registrarMovimiento(db, { activo_id: nuevo.id, accion: "Alta", observacion: "Alta de ítem", usuario: sesion.nombre });
-      toast.success("Ítem agregado");
-    }
 
-    saveDB(db);
-    setData(db);
-    setOpen(false);
+      if (assetId) await reemplazarFotoActivo(assetId, form.foto_url || null);
+
+      await cargar();
+      setOpen(false);
+    } catch (err) {
+      toast.error("No se pudo guardar el ítem: " + (err as Error).message);
+    } finally {
+      setGuardando(false);
+    }
   }
 
   function abrirTransferencia(a: Activo) {
     setTransferir(a);
-    setNuevaTienda(a.tienda_id || "");
+    setNuevaTienda(a.store_id || "");
     setNuevoSector(a.sector_id || "");
     setObsTransferencia("");
   }
 
-  function confirmarTransferencia() {
+  async function confirmarTransferencia() {
     if (!transferir || !nuevaTienda) {
       toast.error("Selecciona la tienda destino");
       return;
     }
-    const db = getDB();
-    const idx = db.activos.findIndex((a) => a.id === transferir.id);
-    if (idx === -1) return;
-    const origenTienda = db.activos[idx].tienda_id;
-    const origenSector = db.activos[idx].sector_id;
-
-    db.activos[idx].tienda_id = nuevaTienda;
-    db.activos[idx].sector_id = nuevoSector || null;
-
-    registrarMovimiento(db, {
-      activo_id: transferir.id,
-      accion: origenTienda !== nuevaTienda ? "Transferencia" : "Cambio de sector",
-      observacion: obsTransferencia || "Transferencia de ítem",
-      tienda_origen_id: origenTienda,
-      tienda_destino_id: nuevaTienda,
-      sector_origen_id: origenSector,
-      sector_destino_id: nuevoSector || null,
-      usuario: sesion.nombre,
-    });
-
-    saveDB(db);
-    setData(db);
-    setTransferir(null);
-    toast.success("Ítem transferido");
+    try {
+      const origenTienda = transferir.store_id;
+      const origenSector = transferir.sector_id;
+      await transferirActivo(transferir.id, { store_id: nuevaTienda, sector_id: nuevoSector || null });
+      await registrarMovimientoActivo({
+        activo_id: transferir.id,
+        accion: origenTienda !== nuevaTienda ? "Transferencia" : "Cambio de sector",
+        observacion: obsTransferencia || "Transferencia de ítem",
+        store_origen_id: origenTienda,
+        store_destino_id: nuevaTienda,
+        sector_origen_id: origenSector,
+        sector_destino_id: nuevoSector || null,
+        usuario_id: sesion.usuarioId ?? null,
+      });
+      await cargar();
+      setTransferir(null);
+      toast.success("Ítem transferido");
+    } catch (err) {
+      toast.error("No se pudo transferir el ítem: " + (err as Error).message);
+    }
   }
 
   function abrirBaja(a: Activo) {
@@ -313,29 +362,25 @@ function InventarioContenido() {
     setMotivoBaja("");
   }
 
-  function confirmarBaja() {
+  async function confirmarBaja() {
     if (!baja || !motivoBaja.trim()) {
       toast.error("Indica el motivo de la baja");
       return;
     }
-    const db = getDB();
-    const idx = db.activos.findIndex((a) => a.id === baja.id);
-    if (idx === -1) return;
-    db.activos[idx].estado = "Baja";
-    db.activos[idx].fecha_baja = now();
-    db.activos[idx].motivo_baja = motivoBaja.trim();
-
-    registrarMovimiento(db, {
-      activo_id: baja.id,
-      accion: "Baja",
-      observacion: motivoBaja.trim(),
-      usuario: sesion.nombre,
-    });
-
-    saveDB(db);
-    setData(db);
-    setBaja(null);
-    toast.success("Ítem dado de baja");
+    try {
+      await darDeBajaActivo(baja.id, motivoBaja);
+      await registrarMovimientoActivo({
+        activo_id: baja.id,
+        accion: "Baja",
+        observacion: motivoBaja.trim(),
+        usuario_id: sesion.usuarioId ?? null,
+      });
+      await cargar();
+      setBaja(null);
+      toast.success("Ítem dado de baja");
+    } catch (err) {
+      toast.error("No se pudo dar de baja el ítem: " + (err as Error).message);
+    }
   }
 
   function imprimirEtiqueta(a: Activo) {
@@ -373,8 +418,8 @@ function InventarioContenido() {
     const filas = activosFiltrados.map((a) => ({
       "Código interno": a.codigo_interno,
       Descripción: a.nombre,
-      Categoría: nombreCategoria(a.categoria_id),
-      Tienda: nombreTienda(a.tienda_id),
+      Categoría: nombreCategoria(a.category_id),
+      Tienda: nombreTienda(a.store_id),
       Sector: nombreSector(a.sector_id),
       Cantidad: a.cantidad ?? 1,
       "Precio unitario ARS": a.precio_ars ?? 0,
@@ -390,7 +435,7 @@ function InventarioContenido() {
   }
 
   async function handleImportarArchivo(e: React.ChangeEvent<HTMLInputElement>) {
-    if (!data) return;
+    if (!activos) return;
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
@@ -409,19 +454,17 @@ function InventarioContenido() {
           pick(row, ["Código interno", "Codigo interno", "codigo_interno", "Código"]) || idGen().toUpperCase();
 
         const tiendaTexto = pick(row, ["Tienda"]);
-        const tienda = data.tiendas.find((t) => t.nombre.toLowerCase() === tiendaTexto.toLowerCase());
+        const tienda = tiendas.find((t) => t.nombre.toLowerCase() === tiendaTexto.toLowerCase());
         if (tiendaTexto && !tienda) avisos.push(`Tienda "${tiendaTexto}" no encontrada`);
 
         const sectorTexto = pick(row, ["Sector"]);
         const sector = tienda
-          ? data.sectores.find(
-              (s) => s.tienda_id === tienda.id && s.nombre.toLowerCase() === sectorTexto.toLowerCase()
-            )
+          ? sectores.find((s) => s.store_id === tienda.id && s.nombre.toLowerCase() === sectorTexto.toLowerCase())
           : undefined;
         if (sectorTexto && tienda && !sector) avisos.push(`Sector "${sectorTexto}" no encontrado en esa tienda`);
 
         const categoriaTexto = pick(row, ["Categoría", "Categoria"]);
-        const categoria = data.categorias.find((c) => c.nombre.toLowerCase() === categoriaTexto.toLowerCase());
+        const categoria = categorias.find((c) => c.nombre.toLowerCase() === categoriaTexto.toLowerCase());
         if (categoriaTexto && !categoria) avisos.push(`Categoría "${categoriaTexto}" no encontrada`);
 
         const estadoTexto = pick(row, ["Estado"]) as EstadoActivo;
@@ -432,7 +475,7 @@ function InventarioContenido() {
         }
         codigosVistos.add(codigo.toLowerCase());
 
-        const yaExiste = data.activos.some((a) => a.codigo_interno.toLowerCase() === codigo.toLowerCase());
+        const yaExiste = activos.some((a) => a.codigo_interno.toLowerCase() === codigo.toLowerCase());
 
         return {
           codigo_interno: codigo,
@@ -448,7 +491,7 @@ function InventarioContenido() {
           observaciones: pick(row, ["Observaciones"]),
           estadoFila: yaExiste ? "Actualiza existente" : "Nuevo",
           avisos,
-        };
+        } as FilaImportada;
       });
 
       setImportPreview(preview);
@@ -458,55 +501,65 @@ function InventarioContenido() {
     }
   }
 
-  function confirmarImportacion() {
-    const db = getDB();
+  async function confirmarImportacion() {
+    if (!activos) return;
+    setImportando(true);
     let creados = 0;
     let actualizados = 0;
+    try {
+      for (const fila of importPreview) {
+        if (!fila.nombre) continue;
+        const existente = activos.find((a) => a.codigo_interno.toLowerCase() === fila.codigo_interno.toLowerCase());
+        const input: ActivoInput = {
+          codigo_interno: fila.codigo_interno,
+          nombre: fila.nombre,
+          descripcion: "",
+          categoria_id: fila.categoria_id,
+          marca: "",
+          modelo: "",
+          numero_serie: "",
+          estado: fila.estado,
+          fecha_compra: "",
+          supplier_id: null,
+          cantidad: fila.cantidad,
+          precio_ars: fila.precio_ars,
+          precio_usd: fila.precio_usd,
+          tienda_id: fila.tienda_id,
+          sector_id: fila.sector_id,
+          responsable: fila.responsable,
+          observaciones: fila.observaciones,
+        };
 
-    importPreview.forEach((fila) => {
-      if (!fila.nombre) return;
-      const idx = db.activos.findIndex((a) => a.codigo_interno.toLowerCase() === fila.codigo_interno.toLowerCase());
-      const payload = {
-        codigo_interno: fila.codigo_interno,
-        nombre: fila.nombre,
-        categoria_id: fila.categoria_id,
-        tienda_id: fila.tienda_id,
-        sector_id: fila.sector_id,
-        cantidad: fila.cantidad,
-        precio_ars: fila.precio_ars,
-        precio_usd: fila.precio_usd,
-        estado: fila.estado,
-        responsable: fila.responsable,
-        observaciones: fila.observaciones,
-      };
-
-      if (idx !== -1) {
-        db.activos[idx] = { ...db.activos[idx], ...payload };
-        registrarMovimiento(db, {
-          activo_id: db.activos[idx].id,
-          accion: "Modificación",
-          observacion: "Actualizado por importación de Excel",
-          usuario: sesion.nombre,
-        });
-        actualizados++;
-      } else {
-        const nuevo: Activo = { id: idGen(), fecha_creacion: now(), ...payload };
-        db.activos.push(nuevo);
-        registrarMovimiento(db, {
-          activo_id: nuevo.id,
-          accion: "Alta",
-          observacion: "Alta por importación de Excel",
-          usuario: sesion.nombre,
-        });
-        creados++;
+        if (existente) {
+          await actualizarActivo(existente.id, input);
+          await registrarMovimientoActivo({
+            activo_id: existente.id,
+            accion: "Modificación",
+            observacion: "Actualizado por importación de Excel",
+            usuario_id: sesion.usuarioId ?? null,
+          });
+          actualizados++;
+        } else {
+          const nuevo = await crearActivo(input);
+          await registrarMovimientoActivo({
+            activo_id: nuevo.id,
+            accion: "Alta",
+            observacion: "Alta por importación de Excel",
+            usuario_id: sesion.usuarioId ?? null,
+          });
+          creados++;
+        }
       }
-    });
 
-    saveDB(db);
-    setData(db);
-    setImportOpen(false);
-    setImportPreview([]);
-    toast.success(`Importación lista: ${creados} nuevos, ${actualizados} actualizados`);
+      await cargar();
+      setImportOpen(false);
+      setImportPreview([]);
+      toast.success(`Importación lista: ${creados} nuevos, ${actualizados} actualizados`);
+    } catch (err) {
+      toast.error("La importación se cortó: " + (err as Error).message);
+    } finally {
+      setImportando(false);
+    }
   }
 
   return (
@@ -548,14 +601,14 @@ function InventarioContenido() {
           <SelectTrigger className="w-48"><SelectValue placeholder="Tienda" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todas">Todas las tiendas</SelectItem>
-            {data.tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
+            {tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
           <SelectTrigger className="w-48"><SelectValue placeholder="Categoría" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todas">Todas las categorías</SelectItem>
-            {data.categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
+            {categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filtroEstado} onValueChange={setFiltroEstado}>
@@ -595,9 +648,9 @@ function InventarioContenido() {
               {activosVisibles.map((a) => (
                 <TableRow key={a.id}>
                   <TableCell>
-                    {a.foto_url ? (
+                    {fotos.get(a.id) ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={a.foto_url} alt={a.nombre} className="h-9 w-9 rounded-md object-cover" />
+                      <img src={fotos.get(a.id)} alt={a.nombre} className="h-9 w-9 rounded-md object-cover" />
                     ) : (
                       <div className="h-9 w-9 rounded-md bg-muted" />
                     )}
@@ -608,9 +661,9 @@ function InventarioContenido() {
                       <span className="ml-2 font-mono text-xs text-muted-foreground">{a.codigo_interno}</span>
                     )}
                   </TableCell>
-                  <TableCell>{nombreCategoria(a.categoria_id)}</TableCell>
+                  <TableCell>{nombreCategoria(a.category_id)}</TableCell>
                   <TableCell>
-                    {nombreTienda(a.tienda_id)} <span className="text-muted-foreground">/ {nombreSector(a.sector_id)}</span>
+                    {nombreTienda(a.store_id)} <span className="text-muted-foreground">/ {nombreSector(a.sector_id)}</span>
                   </TableCell>
                   <TableCell>{a.cantidad ?? 1}</TableCell>
                   <TableCell className="text-xs">
@@ -689,7 +742,7 @@ function InventarioContenido() {
               <Select value={form.tienda_id} onValueChange={(v) => setForm({ ...form, tienda_id: v, sector_id: "" })}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                 <SelectContent>
-                  {data.tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
+                  {tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -736,7 +789,7 @@ function InventarioContenido() {
                 <Select value={form.categoria_id} onValueChange={(v) => setForm({ ...form, categoria_id: v })}>
                   <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                   <SelectContent>
-                    {data.categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
+                    {categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -806,7 +859,8 @@ function InventarioContenido() {
                   </div>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Se guarda en este navegador (prototipo). Con Supabase conectado pasaría a Storage.
+                  Se guarda junto con el activo en Supabase (todavía como imagen embebida, no en Storage — eso queda
+                  como mejora pendiente).
                 </p>
               </div>
             </div>
@@ -814,7 +868,7 @@ function InventarioContenido() {
 
           <DialogFooter>
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={guardar}>Guardar</Button>
+            <Button onClick={guardar} disabled={guardando}>{guardando ? "Guardando..." : "Guardar"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -831,7 +885,7 @@ function InventarioContenido() {
               <Select value={nuevaTienda} onValueChange={(v) => { setNuevaTienda(v); setNuevoSector(""); }}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                 <SelectContent>
-                  {data.tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
+                  {tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -942,7 +996,7 @@ function InventarioContenido() {
                   <TableRow key={`${f.codigo_interno}-${i}`}>
                     <TableCell className="font-mono text-xs">{f.codigo_interno}</TableCell>
                     <TableCell>{f.nombre || <span className="text-destructive">Sin descripción</span>}</TableCell>
-                    <TableCell>{data.tiendas.find((t) => t.id === f.tienda_id)?.nombre || "-"}</TableCell>
+                    <TableCell>{tiendas.find((t) => t.id === f.tienda_id)?.nombre || "-"}</TableCell>
                     <TableCell>{f.cantidad}</TableCell>
                     <TableCell>
                       <Badge variant={f.estadoFila === "Nuevo" ? "success" : "info"}>{f.estadoFila}</Badge>
@@ -955,7 +1009,9 @@ function InventarioContenido() {
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setImportOpen(false)}>Cancelar</Button>
-            <Button onClick={confirmarImportacion}>Confirmar importación</Button>
+            <Button onClick={confirmarImportacion} disabled={importando}>
+              {importando ? "Importando..." : "Confirmar importación"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
