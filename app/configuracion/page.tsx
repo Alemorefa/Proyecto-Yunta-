@@ -8,17 +8,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { X, RefreshCw } from "lucide-react";
-import { getDB, saveDB, idGen, clearAllData, type DB } from "@/lib/db";
+import { getDB, saveDB, clearAllData, type DB } from "@/lib/db";
 import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
 import { cerrarSesion as cerrarSesionAuth } from "@/lib/auth";
 import { marcarBackupHecho } from "@/lib/backup";
 import { obtenerCotizacionOficial } from "@/lib/dolar";
 import { migrarDatosLocalesASupabase, type ResultadoMigracion } from "@/lib/migracion";
+import {
+  listarCategorias,
+  crearCategoria,
+  borrarCategoria,
+  contarActivosPorCategoria,
+  type Categoria,
+} from "@/lib/catalogos";
 import { cn } from "@/lib/utils";
 
 export default function ConfiguracionPage() {
   const [data, setData] = useState<DB | null>(null);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [nombreNegocio, setNombreNegocio] = useState("");
   const [cotizacion, setCotizacion] = useState("");
   const [actualizandoCotizacion, setActualizandoCotizacion] = useState(false);
@@ -29,11 +37,17 @@ export default function ConfiguracionPage() {
   const { rol, esAdmin } = useRolActivo();
   const sesion = useSesionDisplay();
 
+  async function cargarCategorias() {
+    setCategorias(await listarCategorias());
+  }
+
   useEffect(() => {
     const db = getDB();
     setData(db);
     setNombreNegocio(db.config.nombre || "");
     setCotizacion(db.config.cotizacion_usd ? String(db.config.cotizacion_usd) : "");
+    cargarCategorias().catch((err) => toast.error("No se pudieron cargar las categorías: " + (err as Error).message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!data) return null;
@@ -63,28 +77,31 @@ export default function ConfiguracionPage() {
     }
   }
 
-  function agregarCategoria() {
+  async function agregarCategoria() {
     if (!nuevaCategoria.trim()) return;
-    const db = getDB();
-    db.categorias.push({ id: idGen(), nombre: nuevaCategoria.trim() });
-    saveDB(db);
-    setData(db);
-    setNuevaCategoria("");
+    try {
+      await crearCategoria(nuevaCategoria.trim());
+      setNuevaCategoria("");
+      await cargarCategorias();
+    } catch (err) {
+      toast.error("No se pudo crear la categoría: " + (err as Error).message);
+    }
   }
 
-  function quitarCategoria(id: string) {
-    const db = getDB();
-    const enUso = db.activos.filter((a) => a.categoria_id === id && a.estado !== "Baja").length;
+  async function quitarCategoria(id: string) {
+    const enUso = await contarActivosPorCategoria(id);
     if (enUso > 0) {
       const confirmado = confirm(
         `Hay ${enUso} ítem(s) de inventario con esta categoría. Si la borrás van a quedar sin categoría asignada. ¿Continuar?`
       );
       if (!confirmado) return;
     }
-    db.categorias = db.categorias.filter((c) => c.id !== id);
-    db.activos = db.activos.map((a) => (a.categoria_id === id ? { ...a, categoria_id: null } : a));
-    saveDB(db);
-    setData(db);
+    try {
+      await borrarCategoria(id);
+      await cargarCategorias();
+    } catch (err) {
+      toast.error("No se pudo borrar la categoría: " + (err as Error).message);
+    }
   }
 
   function exportarDatos() {
@@ -219,7 +236,7 @@ export default function ConfiguracionPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-1">
-            {data.categorias.map((c) => (
+            {categorias.map((c) => (
               <Badge key={c.id} variant="secondary" className="gap-1">
                 {c.nombre}
                 {esAdmin && (
