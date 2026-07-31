@@ -290,7 +290,7 @@ function InventarioContenido() {
       let assetId = editId;
 
       if (editId) {
-        const anterior = activos.find((a) => a.id === editId);
+        const anterior = activos?.find((a) => a.id === editId);
         const estadoCambio = anterior?.estado !== input.estado;
         await actualizarActivo(editId, input);
         await registrarMovimientoActivo({
