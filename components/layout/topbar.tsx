@@ -131,9 +131,9 @@ export function Topbar({
     router.push(r.href);
   }
 
-  function cerrarSesion() {
+  async function cerrarSesion() {
     setMenuAbierto(false);
-    cerrarSesionAuth();
+    await cerrarSesionAuth();
     toast.info("Sesión cerrada");
   }
 

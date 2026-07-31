@@ -1,126 +1,88 @@
 "use client";
 
-// Login local del prototipo: valida email + contraseña contra los usuarios
-// guardados en localStorage. NO es seguro de verdad (la contraseña queda en
-// texto plano en el navegador) — sirve para simular el flujo de "hace falta
-// credenciales para entrar" mientras no está conectado Supabase Auth, que
-// reemplaza esto por completo (hash de contraseña, sesiones firmadas, RLS).
+// Autenticación real con Supabase Auth (reemplaza el login local en texto
+// plano que tenía el prototipo). Las contraseñas ya no las vemos ni las
+// guardamos nosotros: Supabase las hashea y valida del otro lado.
+//
+// Cuando alguien se registra (signUp), un trigger en la base de datos
+// (ver supabase/schema.sql → handle_new_user) crea automáticamente su fila
+// en public.users: la primera persona que se registra en todo el proyecto
+// queda como "admin", el resto entra como "usuario" (un admin la puede
+// ascender después).
 
 import { useEffect, useState } from "react";
-import { getDB, saveDB, idGen, now, type Usuario } from "./db";
-import { setSesionDisplay } from "./session";
-import { setRolActivo } from "./role";
+import { supabase } from "./supabase";
 
-const AUTH_KEY = "inventarioLY25_autenticado";
-
-export function estaAutenticado(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(AUTH_KEY) === "1";
-}
-
-function marcarAutenticado() {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(AUTH_KEY, "1");
-  window.dispatchEvent(new Event("auth-changed"));
-}
-
-export function cerrarSesion() {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(AUTH_KEY);
-  window.dispatchEvent(new Event("auth-changed"));
-}
+type ResultadoLogin = { ok: true } | { ok: false; error: string };
 
 export function useAutenticado() {
-  // null = todavía no se leyó localStorage (evita el flash de login en el primer render)
+  // null = todavía no se leyó la sesión (evita el flash de login en el
+  // primer render).
   const [auth, setAuth] = useState<boolean | null>(null);
 
   useEffect(() => {
-    setAuth(estaAutenticado());
-    const onChange = () => setAuth(estaAutenticado());
-    window.addEventListener("auth-changed", onChange);
-    window.addEventListener("storage", onChange);
+    let activo = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (activo) setAuth(!!data.session);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (activo) setAuth(!!session);
+    });
     return () => {
-      window.removeEventListener("auth-changed", onChange);
-      window.removeEventListener("storage", onChange);
+      activo = false;
+      sub.subscription.unsubscribe();
     };
   }, []);
 
   return auth;
 }
 
-type ResultadoLogin = { ok: true } | { ok: false; error: string };
-
-function loguear(usuario: Usuario) {
-  setSesionDisplay({ nombre: usuario.nombre, usuarioId: usuario.id });
-  setRolActivo(usuario.rol);
-  marcarAutenticado();
+function traducirError(mensaje: string): string {
+  if (mensaje.includes("Invalid login credentials")) return "Email o contraseña incorrectos";
+  if (mensaje.includes("User already registered")) return "Ya existe una cuenta con ese email";
+  if (mensaje.includes("Password should be at least")) return "La contraseña necesita al menos 6 caracteres";
+  if (mensaje.includes("Unable to validate email address")) return "Ese email no es válido";
+  return mensaje;
 }
 
-// Inicia sesión con email + contraseña. Si el usuario existe pero todavía no
-// tiene contraseña asignada (usuarios creados antes de esta función, o su
-// primer ingreso), la contraseña ingresada ahora queda guardada como la
-// suya, para evitar que alguien quede bloqueado sin forma de entrar.
-export function iniciarSesion(email: string, contrasena: string): ResultadoLogin {
-  const correo = email.trim().toLowerCase();
-  if (!correo || !contrasena) return { ok: false, error: "Completá email y contraseña" };
-
-  const db = getDB();
-  const usuario = db.usuarios.find((u) => u.email.trim().toLowerCase() === correo);
-  if (!usuario) return { ok: false, error: "No encontramos un usuario con ese email" };
-  if (usuario.activo === false) return { ok: false, error: "Este usuario está inactivo" };
-
-  if (!usuario.contrasena) {
-    usuario.contrasena = contrasena;
-    saveDB(db);
-  } else if (usuario.contrasena !== contrasena) {
-    return { ok: false, error: "Contraseña incorrecta" };
-  }
-
-  loguear(usuario);
+export async function iniciarSesion(email: string, contrasena: string): Promise<ResultadoLogin> {
+  if (!email.trim() || !contrasena) return { ok: false, error: "Completá email y contraseña" };
+  const { error } = await supabase.auth.signInWithPassword({
+    email: email.trim(),
+    password: contrasena,
+  });
+  if (error) return { ok: false, error: traducirError(error.message) };
   return { ok: true };
 }
 
-// "Olvidé mi contraseña": como no hay backend ni verificación de email
-// todavía, esto simplemente le pisa la contraseña al usuario que coincide
-// con ese email y entra directo. No es seguro (cualquiera que sepa el email
-// de otro podría resetearle la contraseña) — es aceptable en este
-// prototipo local, pero hay que reemplazarlo por un flujo real (con
-// verificación) cuando se conecte Supabase Auth.
-export function recuperarContrasena(email: string, nuevaContrasena: string): ResultadoLogin {
-  const correo = email.trim().toLowerCase();
-  if (!correo || !nuevaContrasena) return { ok: false, error: "Completá email y la nueva contraseña" };
-
-  const db = getDB();
-  const usuario = db.usuarios.find((u) => u.email.trim().toLowerCase() === correo);
-  if (!usuario) return { ok: false, error: "No encontramos un usuario con ese email" };
-  if (usuario.activo === false) return { ok: false, error: "Este usuario está inactivo" };
-
-  usuario.contrasena = nuevaContrasena;
-  saveDB(db);
-
-  loguear(usuario);
-  return { ok: true };
-}
-
-// Primer uso de la app (sin ningún usuario cargado todavía): crea la cuenta
-// de administrador inicial y entra directo con ella.
-export function crearAdministradorInicial(nombre: string, email: string, contrasena: string): ResultadoLogin {
+// Crea una cuenta nueva. La primera cuenta que se cree en todo el proyecto
+// queda como administradora automáticamente (lo resuelve el trigger de la
+// base, no esta función).
+export async function crearCuenta(nombre: string, email: string, contrasena: string): Promise<ResultadoLogin> {
   if (!nombre.trim() || !email.trim() || !contrasena) {
     return { ok: false, error: "Completá nombre, email y contraseña" };
   }
-  const db = getDB();
-  const usuario: Usuario = {
-    id: idGen(),
-    nombre: nombre.trim(),
-    email: email.trim().toLowerCase(),
-    rol: "admin",
-    activo: true,
-    contrasena,
-    fecha_creacion: now(),
-  };
-  db.usuarios.push(usuario);
-  saveDB(db);
-
-  loguear(usuario);
+  const { error } = await supabase.auth.signUp({
+    email: email.trim(),
+    password: contrasena,
+    options: { data: { nombre: nombre.trim() } },
+  });
+  if (error) return { ok: false, error: traducirError(error.message) };
   return { ok: true };
+}
+
+// Manda un email con un link para elegir una contraseña nueva (a diferencia
+// del prototipo anterior, ahora sí hay verificación real: solo quien tiene
+// acceso a esa casilla de correo puede resetear la contraseña).
+export async function recuperarContrasena(email: string): Promise<ResultadoLogin> {
+  if (!email.trim()) return { ok: false, error: "Completá tu email" };
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: typeof window !== "undefined" ? `${window.location.origin}/recuperar-contrasena` : undefined,
+  });
+  if (error) return { ok: false, error: traducirError(error.message) };
+  return { ok: true };
+}
+
+export async function cerrarSesion() {
+  await supabase.auth.signOut();
 }

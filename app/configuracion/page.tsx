@@ -117,8 +117,8 @@ export default function ConfiguracionPage() {
     e.target.value = "";
   }
 
-  function cerrarSesion() {
-    cerrarSesionAuth();
+  async function cerrarSesion() {
+    await cerrarSesionAuth();
     toast.info("Sesión cerrada");
   }
 
@@ -139,9 +139,11 @@ export default function ConfiguracionPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Para entrar ahora hace falta email y contraseña (login local del prototipo, en{" "}
-            <strong>Usuarios</strong> podés asignarle contraseña a cada uno). Cuando conectemos Supabase Auth esto se
-            reemplaza por un login real con permisos verificados en el servidor.
+            El login ahora es real (Supabase Auth): tu contraseña queda hasheada del lado del servidor, nadie
+            (ni nosotros) puede verla. El primer administrador se crea solo al registrarse por primera vez; para
+            ascender a alguien más a Administrador, por ahora hay que hacerlo a mano desde el panel de Supabase
+            (tabla <code>users</code>, columna <code>role_id</code>) hasta que terminemos de migrar también la
+            pantalla de Usuarios.
           </p>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
