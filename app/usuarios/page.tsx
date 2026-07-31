@@ -101,7 +101,7 @@ export default function UsuariosPage() {
       <p className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
         Ojo: esta lista todavía es la vieja (local, en este navegador) y no está conectada a las cuentas reales de
         login (Supabase Auth). Para dar de alta gente de verdad, por ahora tienen que crear su cuenta desde la
-        pantalla de login ("Crear una cuenta nueva"). Esta pantalla se migra en el próximo paso.
+        pantalla de login (&quot;Crear una cuenta nueva&quot;). Esta pantalla se migra en el próximo paso.
       </p>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-semibold">Gestión de Usuarios (local, temporal)</h3>
