@@ -14,6 +14,7 @@ import { useSesionDisplay } from "@/lib/session";
 import { cerrarSesion as cerrarSesionAuth } from "@/lib/auth";
 import { marcarBackupHecho } from "@/lib/backup";
 import { obtenerCotizacionOficial } from "@/lib/dolar";
+import { migrarDatosLocalesASupabase, type ResultadoMigracion } from "@/lib/migracion";
 import { cn } from "@/lib/utils";
 
 export default function ConfiguracionPage() {
@@ -22,6 +23,8 @@ export default function ConfiguracionPage() {
   const [cotizacion, setCotizacion] = useState("");
   const [actualizandoCotizacion, setActualizandoCotizacion] = useState(false);
   const [nuevaCategoria, setNuevaCategoria] = useState("");
+  const [migrando, setMigrando] = useState(false);
+  const [resultadoMigracion, setResultadoMigracion] = useState<ResultadoMigracion | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { rol, esAdmin } = useRolActivo();
   const sesion = useSesionDisplay();
@@ -129,6 +132,25 @@ export default function ConfiguracionPage() {
     toast.success("Todos los datos fueron eliminados");
   }
 
+  async function migrarASupabase() {
+    if (
+      !confirm(
+        "Esto copia tiendas, inventario, movimientos e impresoras de este navegador a Supabase. No borra nada local. ¿Continuar?"
+      )
+    )
+      return;
+    setMigrando(true);
+    setResultadoMigracion(null);
+    const resultado = await migrarDatosLocalesASupabase();
+    setMigrando(false);
+    setResultadoMigracion(resultado);
+    if (resultado.ok) {
+      toast.success("Migración completada");
+    } else {
+      toast.error("La migración se cortó: " + resultado.error);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold">Configuración</h3>
@@ -232,6 +254,44 @@ export default function ConfiguracionPage() {
             <Button variant="secondary" onClick={() => fileRef.current?.click()}>Importar Datos</Button>
             <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={importarDatos} />
             <Button variant="destructive" onClick={limpiarTodo}>Limpiar Todos los Datos</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {esAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Migración a Supabase</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Copia todo lo que hoy está guardado en este navegador (tiendas, sectores, categorías, inventario,
+              movimientos, impresoras y la configuración general) a las tablas de Supabase. No borra nada local, así
+              que se puede reintentar sin miedo si algo falla a la mitad. Los usuarios de la pantalla{" "}
+              <strong>Usuarios</strong> no se migran — cada persona tiene que crear su cuenta real desde el login.
+            </p>
+            <Button onClick={migrarASupabase} disabled={migrando}>
+              <RefreshCw className={cn("h-4 w-4", migrando && "animate-spin")} />
+              {migrando ? "Migrando..." : "Migrar datos locales a Supabase"}
+            </Button>
+            {resultadoMigracion && (
+              <div className="rounded-md border px-3 py-2 text-sm">
+                {resultadoMigracion.ok ? (
+                  <p className="text-green-600 dark:text-green-400">
+                    Listo: se copiaron {resultadoMigracion.resumen.join(", ")}.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-destructive">Se cortó en: {resultadoMigracion.error}</p>
+                    {resultadoMigracion.resumen.length > 0 && (
+                      <p className="mt-1 text-muted-foreground">
+                        Alcanzó a copiar antes: {resultadoMigracion.resumen.join(", ")}.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
