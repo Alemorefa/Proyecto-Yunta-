@@ -47,3 +47,29 @@ export async function cambiarEstadoUsuario(id: string, activo: boolean): Promise
   const { error } = await supabase.from("users").update({ activo }).eq("id", id);
   if (error) throw error;
 }
+
+export type InvitarUsuarioInput = {
+  email: string;
+  nombre: string;
+  telefono: string;
+  role_id: RolUsuario;
+};
+
+// Da de alta una cuenta nueva mandando un email de invitación (la persona
+// entra al link y elige su propia contraseña). Solo puede llamarla un
+// admin — la validación real ocurre del lado del servidor (app/api/admin/
+// invitar-usuario), acá solo mandamos el pedido con el token de la sesión
+// actual.
+export async function invitarUsuario(input: InvitarUsuarioInput): Promise<void> {
+  const { data: sesionData } = await supabase.auth.getSession();
+  const token = sesionData.session?.access_token;
+  if (!token) throw new Error("No hay una sesión activa");
+
+  const res = await fetch("/api/admin/invitar-usuario", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || "No se pudo crear el usuario");
+}

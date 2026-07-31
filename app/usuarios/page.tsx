@@ -10,11 +10,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Pencil, Power } from "lucide-react";
+import { Pencil, Plus, Power } from "lucide-react";
 import type { RolUsuario } from "@/lib/db";
-import { listarUsuarios, actualizarUsuario, cambiarEstadoUsuario, type UsuarioReal } from "@/lib/usuarios-data";
+import {
+  listarUsuarios,
+  actualizarUsuario,
+  cambiarEstadoUsuario,
+  invitarUsuario,
+  type UsuarioReal,
+} from "@/lib/usuarios-data";
 import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
+
+const INVITAR_VACIO = { email: "", nombre: "", telefono: "", role_id: "usuario" as RolUsuario };
 
 export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<UsuarioReal[] | null>(null);
@@ -23,6 +31,11 @@ export default function UsuariosPage() {
   const [form, setForm] = useState({ nombre: "", telefono: "", role_id: "usuario" as RolUsuario });
   const [busqueda, setBusqueda] = useState("");
   const [guardando, setGuardando] = useState(false);
+
+  const [openInvitar, setOpenInvitar] = useState(false);
+  const [formInvitar, setFormInvitar] = useState(INVITAR_VACIO);
+  const [invitando, setInvitando] = useState(false);
+
   const { esAdmin } = useRolActivo();
   const sesion = useSesionDisplay();
 
@@ -84,6 +97,29 @@ export default function UsuariosPage() {
     }
   }
 
+  function abrirInvitar() {
+    setFormInvitar(INVITAR_VACIO);
+    setOpenInvitar(true);
+  }
+
+  async function enviarInvitacion() {
+    if (!formInvitar.email.trim() || !formInvitar.nombre.trim()) {
+      toast.error("Nombre y email son obligatorios");
+      return;
+    }
+    setInvitando(true);
+    try {
+      await invitarUsuario(formInvitar);
+      await cargar();
+      toast.success(`Invitación enviada a ${formInvitar.email}`);
+      setOpenInvitar(false);
+    } catch (err) {
+      toast.error("No se pudo invitar: " + (err as Error).message);
+    } finally {
+      setInvitando(false);
+    }
+  }
+
   if (!esAdmin) {
     return (
       <Card>
@@ -97,11 +133,14 @@ export default function UsuariosPage() {
   return (
     <div>
       <p className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-        Las cuentas se crean desde la pantalla de login (&quot;Crear una cuenta nueva&quot;). Acá podés ver quién
-        tiene acceso, cambiarle el rol o desactivarla.
+        Solo un administrador puede dar de alta cuentas nuevas: usá &quot;Nuevo Usuario&quot; y le llega un email
+        para que elija su propia contraseña. Ya no hay registro abierto desde el login.
       </p>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-semibold">Gestión de Usuarios</h3>
+        <Button onClick={abrirInvitar}>
+          <Plus className="h-4 w-4" /> Nuevo Usuario
+        </Button>
       </div>
 
       <Input
@@ -165,6 +204,7 @@ export default function UsuariosPage() {
         </CardContent>
       </Card>
 
+      {/* Editar usuario existente */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -193,6 +233,61 @@ export default function UsuariosPage() {
           <DialogFooter>
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button onClick={guardar} disabled={guardando}>{guardando ? "Guardando..." : "Guardar"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invitar usuario nuevo */}
+      <Dialog open={openInvitar} onOpenChange={setOpenInvitar}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nuevo Usuario</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Nombre</Label>
+              <Input
+                value={formInvitar.nombre}
+                onChange={(e) => setFormInvitar({ ...formInvitar, nombre: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={formInvitar.email}
+                onChange={(e) => setFormInvitar({ ...formInvitar, email: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Teléfono (opcional)</Label>
+              <Input
+                value={formInvitar.telefono}
+                onChange={(e) => setFormInvitar({ ...formInvitar, telefono: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Rol</Label>
+              <Select
+                value={formInvitar.role_id}
+                onValueChange={(v) => setFormInvitar({ ...formInvitar, role_id: v as RolUsuario })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="usuario">Usuario</SelectItem>
+                  <SelectItem value="admin">Administrador</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Le va a llegar un email a esa dirección con un link para elegir su propia contraseña.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setOpenInvitar(false)}>Cancelar</Button>
+            <Button onClick={enviarInvitacion} disabled={invitando}>
+              {invitando ? "Enviando..." : "Enviar invitación"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

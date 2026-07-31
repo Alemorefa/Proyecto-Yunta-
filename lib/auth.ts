@@ -55,22 +55,6 @@ export async function iniciarSesion(email: string, contrasena: string): Promise<
   return { ok: true };
 }
 
-// Crea una cuenta nueva. La primera cuenta que se cree en todo el proyecto
-// queda como administradora automáticamente (lo resuelve el trigger de la
-// base, no esta función).
-export async function crearCuenta(nombre: string, email: string, contrasena: string): Promise<ResultadoLogin> {
-  if (!nombre.trim() || !email.trim() || !contrasena) {
-    return { ok: false, error: "Completá nombre, email y contraseña" };
-  }
-  const { error } = await supabase.auth.signUp({
-    email: email.trim(),
-    password: contrasena,
-    options: { data: { nombre: nombre.trim() } },
-  });
-  if (error) return { ok: false, error: traducirError(error.message) };
-  return { ok: true };
-}
-
 // Manda un email con un link para elegir una contraseña nueva (a diferencia
 // del prototipo anterior, ahora sí hay verificación real: solo quien tiene
 // acceso a esa casilla de correo puede resetear la contraseña).
