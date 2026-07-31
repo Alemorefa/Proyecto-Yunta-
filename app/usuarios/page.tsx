@@ -10,80 +10,78 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Pencil, Plus, Power } from "lucide-react";
-import { getDB, saveDB, idGen, now, type Usuario, type DB, type RolUsuario } from "@/lib/db";
+import { Pencil, Power } from "lucide-react";
+import type { RolUsuario } from "@/lib/db";
+import { listarUsuarios, actualizarUsuario, cambiarEstadoUsuario, type UsuarioReal } from "@/lib/usuarios-data";
 import { useRolActivo } from "@/lib/role";
-
-const USUARIO_VACIO = { nombre: "", email: "", telefono: "", rol: "usuario" as RolUsuario, contrasena: "" };
+import { useSesionDisplay } from "@/lib/session";
 
 export default function UsuariosPage() {
-  const [data, setData] = useState<DB | null>(null);
+  const [usuarios, setUsuarios] = useState<UsuarioReal[] | null>(null);
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState(USUARIO_VACIO);
+  const [form, setForm] = useState({ nombre: "", telefono: "", role_id: "usuario" as RolUsuario });
   const [busqueda, setBusqueda] = useState("");
+  const [guardando, setGuardando] = useState(false);
   const { esAdmin } = useRolActivo();
+  const sesion = useSesionDisplay();
+
+  async function cargar() {
+    const u = await listarUsuarios();
+    setUsuarios(u);
+  }
 
   useEffect(() => {
-    setData(getDB());
+    cargar().catch((err) => toast.error("No se pudo cargar los usuarios: " + (err as Error).message));
   }, []);
 
-  if (!data) return null;
+  if (!usuarios) return null;
 
   const q = busqueda.trim().toLowerCase();
   const usuariosFiltrados = q
-    ? data.usuarios.filter((u) => u.nombre.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
-    : data.usuarios;
+    ? usuarios.filter((u) => u.nombre.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+    : usuarios;
 
-  function abrirNuevo() {
-    setEditId(null);
-    setForm(USUARIO_VACIO);
-    setOpen(true);
-  }
-
-  function abrirEditar(u: Usuario) {
+  function abrirEditar(u: UsuarioReal) {
     setEditId(u.id);
-    setForm({ nombre: u.nombre, email: u.email, telefono: u.telefono || "", rol: u.rol, contrasena: "" });
+    setForm({ nombre: u.nombre, telefono: u.telefono || "", role_id: u.role_id });
     setOpen(true);
   }
 
-  function guardar() {
-    if (!form.nombre.trim() || !form.email.trim()) {
-      toast.error("Nombre y email son obligatorios");
+  async function guardar() {
+    if (!editId) return;
+    if (!form.nombre.trim()) {
+      toast.error("El nombre es obligatorio");
       return;
     }
-    if (!editId && !form.contrasena.trim()) {
-      toast.error("Asigná una contraseña para que pueda iniciar sesión");
+    if (editId === sesion.usuarioId && form.role_id !== "admin") {
+      toast.error("No podés quitarte el rol de administrador a vos mismo");
       return;
     }
-    const { contrasena, ...resto } = form;
-    const db = getDB();
-    if (editId) {
-      const idx = db.usuarios.findIndex((u) => u.id === editId);
-      if (idx !== -1) {
-        db.usuarios[idx] = {
-          ...db.usuarios[idx],
-          ...resto,
-          ...(contrasena.trim() ? { contrasena: contrasena.trim() } : {}),
-        };
-      }
+    setGuardando(true);
+    try {
+      await actualizarUsuario(editId, form);
+      await cargar();
       toast.success("Usuario actualizado");
-    } else {
-      db.usuarios.push({ id: idGen(), activo: true, fecha_creacion: now(), contrasena: contrasena.trim(), ...resto });
-      toast.success("Usuario creado");
+      setOpen(false);
+    } catch (err) {
+      toast.error("No se pudo guardar: " + (err as Error).message);
+    } finally {
+      setGuardando(false);
     }
-    saveDB(db);
-    setData(db);
-    setOpen(false);
   }
 
-  function toggleActivo(u: Usuario) {
-    const db = getDB();
-    const idx = db.usuarios.findIndex((x) => x.id === u.id);
-    if (idx === -1) return;
-    db.usuarios[idx].activo = !db.usuarios[idx].activo;
-    saveDB(db);
-    setData(db);
+  async function toggleActivo(u: UsuarioReal) {
+    if (u.id === sesion.usuarioId) {
+      toast.error("No podés desactivar tu propia cuenta");
+      return;
+    }
+    try {
+      await cambiarEstadoUsuario(u.id, !u.activo);
+      await cargar();
+    } catch (err) {
+      toast.error("No se pudo actualizar: " + (err as Error).message);
+    }
   }
 
   if (!esAdmin) {
@@ -99,15 +97,11 @@ export default function UsuariosPage() {
   return (
     <div>
       <p className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-        Ojo: esta lista todavía es la vieja (local, en este navegador) y no está conectada a las cuentas reales de
-        login (Supabase Auth). Para dar de alta gente de verdad, por ahora tienen que crear su cuenta desde la
-        pantalla de login (&quot;Crear una cuenta nueva&quot;). Esta pantalla se migra en el próximo paso.
+        Las cuentas se crean desde la pantalla de login (&quot;Crear una cuenta nueva&quot;). Acá podés ver quién
+        tiene acceso, cambiarle el rol o desactivarla.
       </p>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-lg font-semibold">Gestión de Usuarios (local, temporal)</h3>
-        <Button onClick={abrirNuevo}>
-          <Plus className="h-4 w-4" /> Nuevo Usuario
-        </Button>
+        <h3 className="text-lg font-semibold">Gestión de Usuarios</h3>
       </div>
 
       <Input
@@ -139,16 +133,19 @@ export default function UsuariosPage() {
               )}
               {usuariosFiltrados.map((u) => (
                 <TableRow key={u.id}>
-                  <TableCell>{u.nombre}</TableCell>
+                  <TableCell>
+                    {u.nombre}
+                    {u.id === sesion.usuarioId && <span className="ml-1 text-xs text-muted-foreground">(vos)</span>}
+                  </TableCell>
                   <TableCell>{u.email}</TableCell>
                   <TableCell>
-                    <Badge variant={u.rol === "admin" ? "info" : "secondary"}>
-                      {u.rol === "admin" ? "Administrador" : "Usuario"}
+                    <Badge variant={u.role_id === "admin" ? "info" : "secondary"}>
+                      {u.role_id === "admin" ? "Administrador" : "Usuario"}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={u.activo !== false ? "success" : "destructive"}>
-                      {u.activo !== false ? "Activo" : "Inactivo"}
+                    <Badge variant={u.activo ? "success" : "destructive"}>
+                      {u.activo ? "Activo" : "Inactivo"}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -171,7 +168,7 @@ export default function UsuariosPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editId ? "Editar Usuario" : "Nuevo Usuario"}</DialogTitle>
+            <DialogTitle>Editar Usuario</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -179,16 +176,12 @@ export default function UsuariosPage() {
               <Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
             </div>
             <div>
-              <Label>Email</Label>
-              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            </div>
-            <div>
               <Label>Teléfono</Label>
               <Input value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
             </div>
             <div>
               <Label>Rol</Label>
-              <Select value={form.rol} onValueChange={(v) => setForm({ ...form, rol: v as RolUsuario })}>
+              <Select value={form.role_id} onValueChange={(v) => setForm({ ...form, role_id: v as RolUsuario })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="usuario">Usuario</SelectItem>
@@ -196,19 +189,10 @@ export default function UsuariosPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Contraseña</Label>
-              <Input
-                type="password"
-                value={form.contrasena}
-                onChange={(e) => setForm({ ...form, contrasena: e.target.value })}
-                placeholder={editId ? "Dejar en blanco para no cambiarla" : "Necesaria para que pueda ingresar"}
-              />
-            </div>
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={guardar}>Guardar</Button>
+            <Button onClick={guardar} disabled={guardando}>{guardando ? "Guardando..." : "Guardar"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

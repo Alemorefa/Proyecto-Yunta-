@@ -11,15 +11,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Download, Plus, Printer } from "lucide-react";
+import { calcularMensajeMovimiento, TIPOS_MOVIMIENTO_IMPRESORA, type TipoMovimientoImpresora } from "@/lib/db";
+import { listarTiendas, type Tienda } from "@/lib/catalogos";
 import {
-  getDB,
-  saveDB,
-  idGen,
-  calcularMensajeMovimiento,
-  TIPOS_MOVIMIENTO_IMPRESORA,
-  type DB,
-  type TipoMovimientoImpresora,
-} from "@/lib/db";
+  listarImpresoras,
+  crearImpresora,
+  listarMovimientosImpresora,
+  registrarMovimientoImpresora,
+  type Impresora,
+  type MovimientoImpresora,
+} from "@/lib/impresoras-data";
 import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
 import { exportarExcel } from "@/lib/excel";
@@ -36,8 +37,22 @@ const hoyISO = () => new Date().toISOString().split("T")[0];
 
 const PAGE_SIZE = 25;
 
+// calcularMensajeMovimiento fue escrito contra la forma local (impresora_id);
+// acá adaptamos los movimientos de Supabase (printer_id) a esa forma.
+function paraCalculo(movimientos: MovimientoImpresora[]) {
+  return movimientos.map((m) => ({
+    id: m.id,
+    impresora_id: m.printer_id,
+    fecha: m.fecha,
+    tipo: m.tipo,
+    observacion: m.observacion ?? undefined,
+  }));
+}
+
 export default function ImpresorasPage() {
-  const [data, setData] = useState<DB | null>(null);
+  const [impresoras, setImpresoras] = useState<Impresora[] | null>(null);
+  const [movimientosImpresora, setMovimientosImpresora] = useState<MovimientoImpresora[]>([]);
+  const [tiendas, setTiendas] = useState<Tienda[]>([]);
   const [filtroTienda, setFiltroTienda] = useState("todas");
   const [busqueda, setBusqueda] = useState("");
   const [limite, setLimite] = useState(PAGE_SIZE);
@@ -45,37 +60,45 @@ export default function ImpresorasPage() {
   const [openImpresora, setOpenImpresora] = useState(false);
   const [modeloNuevo, setModeloNuevo] = useState("");
   const [tiendaNueva, setTiendaNueva] = useState("");
+  const [guardandoImpresora, setGuardandoImpresora] = useState(false);
 
   const [openMov, setOpenMov] = useState(false);
   const [impresoraId, setImpresoraId] = useState("");
   const [fecha, setFecha] = useState(hoyISO());
   const [tipo, setTipo] = useState<TipoMovimientoImpresora>("Recarga");
   const [observacion, setObservacion] = useState("");
+  const [guardandoMov, setGuardandoMov] = useState(false);
 
   const { esAdmin } = useRolActivo();
   const sesion = useSesionDisplay();
 
+  async function cargar() {
+    const [i, m, t] = await Promise.all([listarImpresoras(), listarMovimientosImpresora(), listarTiendas()]);
+    setImpresoras(i);
+    setMovimientosImpresora(m);
+    setTiendas(t);
+  }
+
   useEffect(() => {
-    setData(getDB());
+    cargar().catch((err) => toast.error("No se pudo cargar: " + (err as Error).message));
   }, []);
 
   const impresorasFiltradas = useMemo(() => {
-    if (!data) return [];
+    if (!impresoras) return [];
     const q = busqueda.trim().toLowerCase();
-    return data.impresoras.filter((i) => {
-      if (filtroTienda !== "todas" && i.tienda_id !== filtroTienda) return false;
+    return impresoras.filter((i) => {
+      if (filtroTienda !== "todas" && i.store_id !== filtroTienda) return false;
       if (q && !i.modelo.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [data, filtroTienda, busqueda]);
+  }, [impresoras, filtroTienda, busqueda]);
 
   const movimientos = useMemo(() => {
-    if (!data) return [];
     const impresoraIds = new Set(impresorasFiltradas.map((i) => i.id));
-    return [...data.movimientosImpresora]
-      .filter((m) => impresoraIds.has(m.impresora_id))
+    return [...movimientosImpresora]
+      .filter((m) => impresoraIds.has(m.printer_id))
       .sort((a, b) => b.fecha.localeCompare(a.fecha));
-  }, [data, impresorasFiltradas]);
+  }, [movimientosImpresora, impresorasFiltradas]);
 
   const movimientosVisibles = movimientos.slice(0, limite);
 
@@ -83,24 +106,29 @@ export default function ImpresorasPage() {
     setLimite(PAGE_SIZE);
   }, [filtroTienda, busqueda]);
 
-  if (!data) return null;
+  if (!impresoras) return null;
 
-  const nombreTienda = (id: string) => data.tiendas.find((t) => t.id === id)?.nombre || "-";
-  const impresora = (id: string) => data.impresoras.find((i) => i.id === id);
+  const nombreTienda = (id: string) => tiendas.find((t) => t.id === id)?.nombre || "-";
+  const impresora = (id: string) => impresoras.find((i) => i.id === id);
 
-  function crearImpresora() {
+  async function guardarImpresora() {
     if (!modeloNuevo.trim() || !tiendaNueva) {
       toast.error("Modelo y tienda son obligatorios");
       return;
     }
-    const db = getDB();
-    db.impresoras.push({ id: idGen(), modelo: modeloNuevo.trim(), tienda_id: tiendaNueva });
-    saveDB(db);
-    setData(db);
-    setModeloNuevo("");
-    setTiendaNueva("");
-    setOpenImpresora(false);
-    toast.success("Impresora agregada");
+    setGuardandoImpresora(true);
+    try {
+      await crearImpresora(modeloNuevo.trim(), tiendaNueva);
+      await cargar();
+      setModeloNuevo("");
+      setTiendaNueva("");
+      setOpenImpresora(false);
+      toast.success("Impresora agregada");
+    } catch (err) {
+      toast.error("No se pudo agregar la impresora: " + (err as Error).message);
+    } finally {
+      setGuardandoImpresora(false);
+    }
   }
 
   function abrirRegistrarMovimiento(idImpresora?: string) {
@@ -111,38 +139,41 @@ export default function ImpresorasPage() {
     setOpenMov(true);
   }
 
-  function guardarMovimiento() {
+  async function guardarMovimiento() {
     if (!impresoraId) {
       toast.error("Selecciona una impresora");
       return;
     }
-    const db = getDB();
-    const id = idGen();
-    db.movimientosImpresora.push({
-      id,
-      impresora_id: impresoraId,
-      fecha,
-      tipo,
-      observacion,
-      usuario: sesion.nombre,
-    });
-    saveDB(db);
-    setData(db);
-    setOpenMov(false);
-    toast.success("Movimiento registrado");
+    setGuardandoMov(true);
+    try {
+      await registrarMovimientoImpresora({
+        printer_id: impresoraId,
+        fecha,
+        tipo,
+        observacion,
+        usuario_id: sesion.usuarioId ?? null,
+      });
+      await cargar();
+      setOpenMov(false);
+      toast.success("Movimiento registrado");
+    } catch (err) {
+      toast.error("No se pudo registrar el movimiento: " + (err as Error).message);
+    } finally {
+      setGuardandoMov(false);
+    }
   }
 
   function exportar() {
-    if (!data) return;
+    const calculo = paraCalculo(movimientosImpresora);
     const filas = movimientos.map((m) => {
-      const imp = impresora(m.impresora_id);
+      const imp = impresora(m.printer_id);
       return {
         Impresora: imp?.modelo || "-",
-        Tienda: imp ? nombreTienda(imp.tienda_id) : "-",
+        Tienda: imp ? nombreTienda(imp.store_id) : "-",
         Fecha: m.fecha,
         "Tipo de movimiento": m.tipo,
         Observación: m.observacion || "",
-        Cálculo: calcularMensajeMovimiento(data.movimientosImpresora, m.impresora_id, m.fecha, undefined),
+        Cálculo: calcularMensajeMovimiento(calculo, m.printer_id, m.fecha, undefined),
       };
     });
     exportarExcel(filas, `impresoras-movimientos-${hoyISO()}`, "Impresoras");
@@ -186,7 +217,7 @@ export default function ImpresorasPage() {
           <SelectTrigger className="w-56"><SelectValue placeholder="Tienda" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todas">Todas las tiendas</SelectItem>
-            {data.tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
+            {tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -214,17 +245,18 @@ export default function ImpresorasPage() {
                 </TableRow>
               )}
               {movimientosVisibles.map((m) => {
-                const imp = impresora(m.impresora_id);
-                const mensaje = calcularMensajeMovimiento(data.movimientosImpresora, m.impresora_id, m.fecha);
+                const imp = impresora(m.printer_id);
+                const calculo = paraCalculo(movimientosImpresora);
+                const mensaje = calcularMensajeMovimiento(calculo, m.printer_id, m.fecha);
                 return (
                   <TableRow key={m.id}>
                     <TableCell>{imp?.modelo || "-"}</TableCell>
-                    <TableCell>{imp ? nombreTienda(imp.tienda_id) : "-"}</TableCell>
+                    <TableCell>{imp ? nombreTienda(imp.store_id) : "-"}</TableCell>
                     <TableCell>{m.fecha}</TableCell>
                     <TableCell>
                       <Badge variant={badgeTipo(m.tipo)}>{m.tipo}</Badge>
                     </TableCell>
-                    <TableCell className="max-w-[220px] truncate" title={m.observacion}>{m.observacion || "-"}</TableCell>
+                    <TableCell className="max-w-[220px] truncate" title={m.observacion || ""}>{m.observacion || "-"}</TableCell>
                     <TableCell
                       className={`text-xs ${mensaje === "No hay registros anteriores" ? "text-muted-foreground" : "font-medium"}`}
                     >
@@ -232,7 +264,7 @@ export default function ImpresorasPage() {
                     </TableCell>
                     {esAdmin && (
                       <TableCell>
-                        <Button size="sm" variant="ghost" onClick={() => abrirRegistrarMovimiento(m.impresora_id)}>
+                        <Button size="sm" variant="ghost" onClick={() => abrirRegistrarMovimiento(m.printer_id)}>
                           + Movimiento
                         </Button>
                       </TableCell>
@@ -269,14 +301,16 @@ export default function ImpresorasPage() {
               <Select value={tiendaNueva} onValueChange={setTiendaNueva}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                 <SelectContent>
-                  {data.tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
+                  {tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setOpenImpresora(false)}>Cancelar</Button>
-            <Button onClick={crearImpresora}>Guardar</Button>
+            <Button onClick={guardarImpresora} disabled={guardandoImpresora}>
+              {guardandoImpresora ? "Guardando..." : "Guardar"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -293,14 +327,14 @@ export default function ImpresorasPage() {
               <Select value={impresoraId} onValueChange={setImpresoraId}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                 <SelectContent>
-                  {data.impresoras.map((i) => (
+                  {impresoras.map((i) => (
                     <SelectItem key={i.id} value={i.id}>
-                      {i.modelo} · {nombreTienda(i.tienda_id)}
+                      {i.modelo} · {nombreTienda(i.store_id)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {data.impresoras.length === 0 && (
+              {impresoras.length === 0 && (
                 <p className="mt-1 text-xs text-muted-foreground">
                   Primero agregá una impresora con el botón &quot;Nueva impresora&quot;.
                 </p>
@@ -330,7 +364,9 @@ export default function ImpresorasPage() {
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setOpenMov(false)}>Cancelar</Button>
-            <Button onClick={guardarMovimiento}>Guardar</Button>
+            <Button onClick={guardarMovimiento} disabled={guardandoMov}>
+              {guardandoMov ? "Guardando..." : "Guardar"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
