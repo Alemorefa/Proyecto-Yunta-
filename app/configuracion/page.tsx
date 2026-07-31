@@ -1,20 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { X, RefreshCw } from "lucide-react";
-import { getDB, saveDB, clearAllData, type DB } from "@/lib/db";
+import { RefreshCw, X } from "lucide-react";
 import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
 import { cerrarSesion as cerrarSesionAuth } from "@/lib/auth";
 import { marcarBackupHecho } from "@/lib/backup";
 import { obtenerCotizacionOficial } from "@/lib/dolar";
-import { migrarDatosLocalesASupabase, type ResultadoMigracion } from "@/lib/migracion";
+import { obtenerConfig, guardarConfig as guardarConfigSupabase, registrarCotizacion } from "@/lib/config-data";
+import { generarBackupCompleto } from "@/lib/backup-data";
 import {
   listarCategorias,
   crearCategoria,
@@ -25,15 +25,14 @@ import {
 import { cn } from "@/lib/utils";
 
 export default function ConfiguracionPage() {
-  const [data, setData] = useState<DB | null>(null);
+  const [cargado, setCargado] = useState(false);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [nombreNegocio, setNombreNegocio] = useState("");
   const [cotizacion, setCotizacion] = useState("");
+  const [guardandoConfig, setGuardandoConfig] = useState(false);
   const [actualizandoCotizacion, setActualizandoCotizacion] = useState(false);
   const [nuevaCategoria, setNuevaCategoria] = useState("");
-  const [migrando, setMigrando] = useState(false);
-  const [resultadoMigracion, setResultadoMigracion] = useState<ResultadoMigracion | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [exportando, setExportando] = useState(false);
   const { rol, esAdmin } = useRolActivo();
   const sesion = useSesionDisplay();
 
@@ -42,26 +41,31 @@ export default function ConfiguracionPage() {
   }
 
   useEffect(() => {
-    const db = getDB();
-    setData(db);
-    setNombreNegocio(db.config.nombre || "");
-    setCotizacion(db.config.cotizacion_usd ? String(db.config.cotizacion_usd) : "");
+    obtenerConfig()
+      .then((c) => {
+        setNombreNegocio(c.nombre_negocio || "");
+        setCotizacion(c.cotizacion_usd ? String(c.cotizacion_usd) : "");
+        setCargado(true);
+      })
+      .catch((err) => toast.error("No se pudo cargar la configuración: " + (err as Error).message));
     cargarCategorias().catch((err) => toast.error("No se pudieron cargar las categorías: " + (err as Error).message));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!data) return null;
+  if (!cargado) return null;
 
-  function guardarConfig() {
-    const db = getDB();
-    db.config = {
-      ...db.config,
-      nombre: nombreNegocio.trim(),
-      cotizacion_usd: cotizacion.trim() ? Number(cotizacion) : undefined,
-    };
-    saveDB(db);
-    setData(db);
-    toast.success("Configuración guardada");
+  async function guardarConfig() {
+    setGuardandoConfig(true);
+    try {
+      await guardarConfigSupabase({
+        nombre_negocio: nombreNegocio,
+        cotizacion_usd: cotizacion.trim() ? Number(cotizacion) : null,
+      });
+      toast.success("Configuración guardada");
+    } catch (err) {
+      toast.error("No se pudo guardar: " + (err as Error).message);
+    } finally {
+      setGuardandoConfig(false);
+    }
   }
 
   async function actualizarCotizacion() {
@@ -69,6 +73,7 @@ export default function ConfiguracionPage() {
     try {
       const info = await obtenerCotizacionOficial();
       setCotizacion(String(info.venta));
+      registrarCotizacion(info).catch(() => {});
       toast.success('Cotización oficial traída. Tocá "Guardar Configuración" para dejarla guardada.');
     } catch {
       toast.error("No se pudo traer la cotización");
@@ -104,68 +109,27 @@ export default function ConfiguracionPage() {
     }
   }
 
-  function exportarDatos() {
-    const db = getDB();
-    const blob = new Blob([JSON.stringify(db, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `inventario-ly25-backup-${new Date().toISOString().split("T")[0]}.json`;
-    a.click();
-    marcarBackupHecho();
-    toast.success("Datos exportados");
-  }
-
-  function importarDatos(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const parsed = JSON.parse(ev.target?.result as string) as Partial<DB>;
-        if (!parsed.tiendas || !parsed.activos) {
-          toast.error("Formato inválido");
-          return;
-        }
-        saveDB(parsed as DB);
-        setData(getDB());
-        toast.success("Datos importados correctamente");
-      } catch (err) {
-        toast.error("Error al importar: " + (err as Error).message);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
+  async function exportarDatos() {
+    setExportando(true);
+    try {
+      const backup = await generarBackupCompleto();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `inventario-ly25-backup-${new Date().toISOString().split("T")[0]}.json`;
+      a.click();
+      marcarBackupHecho();
+      toast.success("Backup exportado");
+    } catch (err) {
+      toast.error("No se pudo generar el backup: " + (err as Error).message);
+    } finally {
+      setExportando(false);
+    }
   }
 
   async function cerrarSesion() {
     await cerrarSesionAuth();
     toast.info("Sesión cerrada");
-  }
-
-  function limpiarTodo() {
-    if (!confirm("¿Estás seguro? Se borrarán TODOS los datos guardados en este navegador.")) return;
-    clearAllData();
-    setData(getDB());
-    toast.success("Todos los datos fueron eliminados");
-  }
-
-  async function migrarASupabase() {
-    if (
-      !confirm(
-        "Esto copia tiendas, inventario, movimientos e impresoras de este navegador a Supabase. No borra nada local. ¿Continuar?"
-      )
-    )
-      return;
-    setMigrando(true);
-    setResultadoMigracion(null);
-    const resultado = await migrarDatosLocalesASupabase();
-    setMigrando(false);
-    setResultadoMigracion(resultado);
-    if (resultado.ok) {
-      toast.success("Migración completada");
-    } else {
-      toast.error("La migración se cortó: " + resultado.error);
-    }
   }
 
   return (
@@ -178,11 +142,9 @@ export default function ConfiguracionPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            El login ahora es real (Supabase Auth): tu contraseña queda hasheada del lado del servidor, nadie
-            (ni nosotros) puede verla. El primer administrador se crea solo al registrarse por primera vez; para
-            ascender a alguien más a Administrador, por ahora hay que hacerlo a mano desde el panel de Supabase
-            (tabla <code>users</code>, columna <code>role_id</code>) hasta que terminemos de migrar también la
-            pantalla de Usuarios.
+            El login es real (Supabase Auth): tu contraseña queda hasheada del lado del servidor, nadie (ni
+            nosotros) puede verla. El primer administrador se crea solo al registrarse por primera vez; para
+            ascender a alguien más a Administrador, andá a la pantalla <strong>Usuarios</strong> y cambiale el rol.
           </p>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -226,7 +188,9 @@ export default function ConfiguracionPage() {
               no queda guardada hasta que toques &quot;Guardar Configuración&quot;.
             </p>
           </div>
-          <Button onClick={guardarConfig}>Guardar Configuración</Button>
+          <Button onClick={guardarConfig} disabled={guardandoConfig}>
+            {guardandoConfig ? "Guardando..." : "Guardar Configuración"}
+          </Button>
         </CardContent>
       </Card>
 
@@ -264,51 +228,18 @@ export default function ConfiguracionPage() {
       {esAdmin && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Datos (prototipo local)</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={exportarDatos}>Exportar Datos (JSON)</Button>
-            <Button variant="secondary" onClick={() => fileRef.current?.click()}>Importar Datos</Button>
-            <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={importarDatos} />
-            <Button variant="destructive" onClick={limpiarTodo}>Limpiar Todos los Datos</Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {esAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Migración a Supabase</CardTitle>
+            <CardTitle className="text-base">Backup de Datos</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Copia todo lo que hoy está guardado en este navegador (tiendas, sectores, categorías, inventario,
-              movimientos, impresoras y la configuración general) a las tablas de Supabase. No borra nada local, así
-              que se puede reintentar sin miedo si algo falla a la mitad. Los usuarios de la pantalla{" "}
-              <strong>Usuarios</strong> no se migran — cada persona tiene que crear su cuenta real desde el login.
+              Todos los datos viven en Supabase (no en este navegador), así que no hace falta &quot;importar&quot; ni
+              &quot;limpiar&quot; nada desde acá. Este botón descarga una foto completa (JSON) de tiendas, inventario,
+              movimientos, impresoras, usuarios y configuración, útil como respaldo o para revisar algo puntual.
             </p>
-            <Button onClick={migrarASupabase} disabled={migrando}>
-              <RefreshCw className={cn("h-4 w-4", migrando && "animate-spin")} />
-              {migrando ? "Migrando..." : "Migrar datos locales a Supabase"}
+            <Button variant="outline" onClick={exportarDatos} disabled={exportando}>
+              <RefreshCw className={cn("h-4 w-4", exportando && "animate-spin")} />
+              {exportando ? "Generando..." : "Exportar Backup (JSON)"}
             </Button>
-            {resultadoMigracion && (
-              <div className="rounded-md border px-3 py-2 text-sm">
-                {resultadoMigracion.ok ? (
-                  <p className="text-green-600 dark:text-green-400">
-                    Listo: se copiaron {resultadoMigracion.resumen.join(", ")}.
-                  </p>
-                ) : (
-                  <>
-                    <p className="text-destructive">Se cortó en: {resultadoMigracion.error}</p>
-                    {resultadoMigracion.resumen.length > 0 && (
-                      <p className="mt-1 text-muted-foreground">
-                        Alcanzó a copiar antes: {resultadoMigracion.resumen.join(", ")}.
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
           </CardContent>
         </Card>
       )}

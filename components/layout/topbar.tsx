@@ -6,8 +6,8 @@ import { toast } from "sonner";
 import { Bell, Menu, Search, User, Settings, LogOut, Sun, Moon } from "lucide-react";
 import { useSesionDisplay } from "@/lib/session";
 import { useTema } from "@/lib/theme";
-import { getDB, useUltimaEscritura } from "@/lib/db";
 import { cerrarSesion as cerrarSesionAuth } from "@/lib/auth";
+import { buscarGlobal, type ResultadoBusqueda } from "@/lib/busqueda-global";
 
 const TITLES: Record<string, string> = {
   "/": "Inicio",
@@ -21,63 +21,6 @@ const TITLES: Record<string, string> = {
   "/configuracion": "Configuración",
 };
 
-type ResultadoBusqueda = {
-  tipo: string;
-  label: string;
-  sub?: string;
-  href: string;
-};
-
-function buscarGlobal(termino: string): ResultadoBusqueda[] {
-  const q = termino.trim().toLowerCase();
-  if (!q) return [];
-  const db = getDB();
-  const resultados: ResultadoBusqueda[] = [];
-
-  for (const a of db.activos) {
-    if (resultados.length >= 6) break;
-    const coincide =
-      a.nombre.toLowerCase().includes(q) ||
-      a.codigo_interno.toLowerCase().includes(q) ||
-      (a.descripcion || "").toLowerCase().includes(q);
-    if (coincide) {
-      resultados.push({
-        tipo: "Activo",
-        label: a.nombre,
-        sub: a.codigo_interno,
-        href: `/inventario?buscar=${encodeURIComponent(a.codigo_interno)}`,
-      });
-    }
-  }
-
-  for (const t of db.tiendas) {
-    if (resultados.length >= 6) break;
-    if (t.nombre.toLowerCase().includes(q) || t.codigo.toLowerCase().includes(q)) {
-      resultados.push({ tipo: "Tienda", label: t.nombre, sub: t.codigo, href: "/tiendas" });
-    }
-  }
-
-  for (const i of db.impresoras) {
-    if (resultados.length >= 6) break;
-    if (i.modelo.toLowerCase().includes(q)) {
-      resultados.push({ tipo: "Impresora", label: i.modelo, href: "/impresoras" });
-    }
-  }
-
-  return resultados;
-}
-
-function formatoSincronizado(ultima: number | null, ahora: number): string {
-  if (!ultima) return "Sin cambios guardados aún";
-  const segundos = Math.max(0, Math.round((ahora - ultima) / 1000));
-  if (segundos < 5) return "Sincronizado ahora";
-  if (segundos < 60) return `Sincronizado hace ${segundos}s`;
-  const minutos = Math.round(segundos / 60);
-  if (minutos < 60) return `Sincronizado hace ${minutos}m`;
-  const horas = Math.round(minutos / 60);
-  return `Sincronizado hace ${horas}h`;
-}
-
 export function Topbar({
   pathname,
   onAbrirMenu,
@@ -88,9 +31,7 @@ export function Topbar({
   const router = useRouter();
   const sesion = useSesionDisplay();
   const { tema, alternar } = useTema();
-  const ultimaEscritura = useUltimaEscritura();
 
-  const [ahora, setAhora] = useState(() => Date.now());
   const [busqueda, setBusqueda] = useState("");
   const [resultados, setResultados] = useState<ResultadoBusqueda[]>([]);
   const [buscadorAbierto, setBuscadorAbierto] = useState(false);
@@ -98,12 +39,7 @@ export function Topbar({
 
   const buscadorRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-
-  // Refresca el indicador "Sincronizado hace Xs" cada segundo.
-  useEffect(() => {
-    const t = setInterval(() => setAhora(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
+  const busquedaIdRef = useRef(0);
 
   // Cierra buscador/menú de usuario al hacer click afuera.
   useEffect(() => {
@@ -121,8 +57,11 @@ export function Topbar({
 
   function onBuscar(valor: string) {
     setBusqueda(valor);
-    setResultados(buscarGlobal(valor));
     setBuscadorAbierto(true);
+    const idBusqueda = ++busquedaIdRef.current;
+    buscarGlobal(valor).then((r) => {
+      if (idBusqueda === busquedaIdRef.current) setResultados(r);
+    });
   }
 
   function irAResultado(r: ResultadoBusqueda) {
@@ -186,10 +125,10 @@ export function Topbar({
           )}
         </div>
 
-        {/* Indicador de "sincronización" (guardado local) */}
+        {/* Indicador de conexión: los datos viven en Supabase, no en este navegador */}
         <span className="hidden shrink-0 items-center gap-1.5 text-xs text-muted-foreground md:flex">
           <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-          {formatoSincronizado(ultimaEscritura, ahora)}
+          Conectado
         </span>
 
         {/* Botón directo para alternar modo oscuro/claro */}
