@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Download, Plus, Printer } from "lucide-react";
+import { ChevronDown, Download, Plus, Printer } from "lucide-react";
 import { calcularMensajeMovimiento, TIPOS_MOVIMIENTO_IMPRESORA, type TipoMovimientoImpresora } from "@/lib/db";
 import { listarTiendas, type Tienda } from "@/lib/catalogos";
 import {
@@ -68,6 +68,16 @@ export default function ImpresorasPage() {
   const [tipo, setTipo] = useState<TipoMovimientoImpresora>("Recarga");
   const [observacion, setObservacion] = useState("");
   const [guardandoMov, setGuardandoMov] = useState(false);
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+
+  function toggleExpandido(id: string) {
+    setExpandidos((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const { esAdmin } = useRolActivo();
   const sesion = useSesionDisplay();
@@ -227,19 +237,20 @@ export default function ImpresorasPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8 nav:hidden"></TableHead>
                 <TableHead>Impresora</TableHead>
-                <TableHead>Tienda</TableHead>
-                <TableHead>Fecha</TableHead>
+                <TableHead className="hidden nav:table-cell">Tienda</TableHead>
+                <TableHead className="hidden nav:table-cell">Fecha</TableHead>
                 <TableHead>Tipo</TableHead>
-                <TableHead>Observación</TableHead>
-                <TableHead>Cálculo</TableHead>
+                <TableHead className="hidden nav:table-cell">Observación</TableHead>
+                <TableHead className="hidden nav:table-cell">Cálculo</TableHead>
                 {esAdmin && <TableHead></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {movimientos.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  <TableCell colSpan={esAdmin ? 8 : 7} className="text-center text-muted-foreground">
                     No hay movimientos registrados
                   </TableCell>
                 </TableRow>
@@ -248,28 +259,62 @@ export default function ImpresorasPage() {
                 const imp = impresora(m.printer_id);
                 const calculo = paraCalculo(movimientosImpresora);
                 const mensaje = calcularMensajeMovimiento(calculo, m.printer_id, m.fecha);
+                const expandido = expandidos.has(m.id);
                 return (
-                  <TableRow key={m.id}>
-                    <TableCell>{imp?.modelo || "-"}</TableCell>
-                    <TableCell>{imp ? nombreTienda(imp.store_id) : "-"}</TableCell>
-                    <TableCell>{m.fecha}</TableCell>
-                    <TableCell>
-                      <Badge variant={badgeTipo(m.tipo)}>{m.tipo}</Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[220px] truncate" title={m.observacion || ""}>{m.observacion || "-"}</TableCell>
-                    <TableCell
-                      className={`text-xs ${mensaje === "No hay registros anteriores" ? "text-muted-foreground" : "font-medium"}`}
-                    >
-                      {mensaje}
-                    </TableCell>
-                    {esAdmin && (
-                      <TableCell>
-                        <Button size="sm" variant="ghost" onClick={() => abrirRegistrarMovimiento(m.printer_id)}>
-                          + Movimiento
+                  <Fragment key={m.id}>
+                    <TableRow>
+                      <TableCell className="nav:hidden">
+                        <Button size="icon" variant="ghost" onClick={() => toggleExpandido(m.id)}>
+                          <ChevronDown className={`h-4 w-4 transition-transform ${expandido ? "rotate-180" : ""}`} />
                         </Button>
                       </TableCell>
+                      <TableCell>{imp?.modelo || "-"}</TableCell>
+                      <TableCell className="hidden nav:table-cell">{imp ? nombreTienda(imp.store_id) : "-"}</TableCell>
+                      <TableCell className="hidden nav:table-cell">{m.fecha}</TableCell>
+                      <TableCell>
+                        <Badge variant={badgeTipo(m.tipo)}>{m.tipo}</Badge>
+                      </TableCell>
+                      <TableCell className="hidden max-w-[220px] truncate nav:table-cell" title={m.observacion || ""}>
+                        {m.observacion || "-"}
+                      </TableCell>
+                      <TableCell
+                        className={`hidden text-xs nav:table-cell ${mensaje === "No hay registros anteriores" ? "text-muted-foreground" : "font-medium"}`}
+                      >
+                        {mensaje}
+                      </TableCell>
+                      {esAdmin && (
+                        <TableCell>
+                          <Button size="sm" variant="ghost" onClick={() => abrirRegistrarMovimiento(m.printer_id)}>
+                            + Movimiento
+                          </Button>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                    {expandido && (
+                      <TableRow className="nav:hidden">
+                        <TableCell colSpan={esAdmin ? 4 : 3} className="bg-muted/30">
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-2 py-1 text-xs">
+                            <div>
+                              <span className="text-muted-foreground">Tienda: </span>
+                              {imp ? nombreTienda(imp.store_id) : "-"}
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Fecha: </span>
+                              {m.fecha}
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-muted-foreground">Observación: </span>
+                              {m.observacion || "-"}
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-muted-foreground">Cálculo: </span>
+                              {mensaje}
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     )}
-                  </TableRow>
+                  </Fragment>
                 );
               })}
             </TableBody>

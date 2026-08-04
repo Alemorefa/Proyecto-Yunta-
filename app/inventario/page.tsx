@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeftRight, Download, Pencil, Plus, Printer, QrCode, Trash2, Upload } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, Download, Pencil, Plus, Printer, QrCode, Trash2, Upload } from "lucide-react";
 import { EscanerQR } from "@/components/inventario/escaner-qr";
 import { idGen, ESTADOS_ACTIVO, type EstadoActivo } from "@/lib/db";
 import {
@@ -131,6 +131,16 @@ function InventarioContenido() {
   const [motivoBaja, setMotivoBaja] = useState("");
 
   const [qrActivo, setQrActivo] = useState<Activo | null>(null);
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+
+  function toggleExpandido(id: string) {
+    setExpandidos((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const [importOpen, setImportOpen] = useState(false);
   const [importPreview, setImportPreview] = useState<FilaImportada[]>([]);
@@ -646,87 +656,136 @@ function InventarioContenido() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead></TableHead>
+                <TableHead className="w-8 nav:hidden"></TableHead>
+                <TableHead className="hidden nav:table-cell"></TableHead>
                 <TableHead>Descripción</TableHead>
                 <TableHead>Categoría</TableHead>
-                <TableHead>Tienda / Sector</TableHead>
-                <TableHead>Cant.</TableHead>
-                <TableHead>Precio unit.</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>QR</TableHead>
+                <TableHead className="hidden nav:table-cell">Tienda / Sector</TableHead>
+                <TableHead className="hidden nav:table-cell">Cant.</TableHead>
+                <TableHead className="hidden nav:table-cell">Precio unit.</TableHead>
+                <TableHead className="hidden nav:table-cell">Total</TableHead>
+                <TableHead className="hidden nav:table-cell">Estado</TableHead>
+                <TableHead className="hidden nav:table-cell">QR</TableHead>
                 {esAdmin && <TableHead>Acciones</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {activosFiltrados.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground">
+                  <TableCell colSpan={esAdmin ? 11 : 10} className="text-center text-muted-foreground">
                     No hay ítems registrados
                   </TableCell>
                 </TableRow>
               )}
-              {activosVisibles.map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell>
-                    {fotos.get(a.id) ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={fotos.get(a.id)} alt={a.nombre} className="h-9 w-9 rounded-md object-cover" />
-                    ) : (
-                      <div className="h-9 w-9 rounded-md bg-muted" />
+              {activosVisibles.map((a) => {
+                const expandido = expandidos.has(a.id);
+                return (
+                  <Fragment key={a.id}>
+                    <TableRow>
+                      <TableCell className="nav:hidden">
+                        <Button size="icon" variant="ghost" onClick={() => toggleExpandido(a.id)}>
+                          <ChevronDown className={`h-4 w-4 transition-transform ${expandido ? "rotate-180" : ""}`} />
+                        </Button>
+                      </TableCell>
+                      <TableCell className="hidden nav:table-cell">
+                        {fotos.get(a.id) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={fotos.get(a.id)} alt={a.nombre} className="h-9 w-9 rounded-md object-cover" />
+                        ) : (
+                          <div className="h-9 w-9 rounded-md bg-muted" />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {a.nombre}
+                        {a.codigo_interno && (
+                          <span className="ml-2 font-mono text-xs text-muted-foreground">{a.codigo_interno}</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{nombreCategoria(a.category_id)}</TableCell>
+                      <TableCell className="hidden nav:table-cell">
+                        {nombreTienda(a.store_id)} <span className="text-muted-foreground">/ {nombreSector(a.sector_id)}</span>
+                      </TableCell>
+                      <TableCell className="hidden nav:table-cell">{a.cantidad ?? 1}</TableCell>
+                      <TableCell className="hidden text-xs nav:table-cell">
+                        {a.precio_ars ? `$ ${a.precio_ars.toLocaleString("es-AR")}` : ""}
+                        {a.precio_ars && a.precio_usd ? " / " : ""}
+                        {a.precio_usd ? `US$ ${a.precio_usd.toLocaleString("es-AR")}` : ""}
+                      </TableCell>
+                      <TableCell className="hidden text-xs font-medium nav:table-cell">
+                        {a.precio_ars ? `$ ${valorTotalARS(a).toLocaleString("es-AR")}` : ""}
+                        {a.precio_ars && a.precio_usd ? " / " : ""}
+                        {a.precio_usd ? `US$ ${valorTotalUSD(a).toLocaleString("es-AR")}` : ""}
+                      </TableCell>
+                      <TableCell className="hidden nav:table-cell">
+                        <Badge variant={badgeEstado(a.estado)}>{a.estado}</Badge>
+                      </TableCell>
+                      <TableCell className="hidden nav:table-cell">
+                        <Button size="icon" variant="ghost" onClick={() => setQrActivo(a)}>
+                          <QrCode className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                      {esAdmin && (
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button size="icon" variant="ghost" onClick={() => abrirEditar(a)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={() => abrirTransferencia(a)}>
+                              <ArrowLeftRight className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              disabled={a.estado === "Baja"}
+                              onClick={() => abrirBaja(a)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                    {expandido && (
+                      <TableRow className="nav:hidden">
+                        <TableCell colSpan={esAdmin ? 4 : 3} className="bg-muted/30">
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-2 py-1 text-xs">
+                            <div>
+                              <span className="text-muted-foreground">Tienda/Sector: </span>
+                              {nombreTienda(a.store_id)} / {nombreSector(a.sector_id)}
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Cantidad: </span>
+                              {a.cantidad ?? 1}
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Precio unit.: </span>
+                              {a.precio_ars ? `$ ${a.precio_ars.toLocaleString("es-AR")}` : ""}
+                              {a.precio_ars && a.precio_usd ? " / " : ""}
+                              {a.precio_usd ? `US$ ${a.precio_usd.toLocaleString("es-AR")}` : ""}
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Total: </span>
+                              {a.precio_ars ? `$ ${valorTotalARS(a).toLocaleString("es-AR")}` : ""}
+                              {a.precio_ars && a.precio_usd ? " / " : ""}
+                              {a.precio_usd ? `US$ ${valorTotalUSD(a).toLocaleString("es-AR")}` : ""}
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Estado: </span>
+                              <Badge variant={badgeEstado(a.estado)}>{a.estado}</Badge>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-muted-foreground">QR: </span>
+                              <Button size="icon" variant="ghost" onClick={() => setQrActivo(a)}>
+                                <QrCode className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     )}
-                  </TableCell>
-                  <TableCell>
-                    {a.nombre}
-                    {a.codigo_interno && (
-                      <span className="ml-2 font-mono text-xs text-muted-foreground">{a.codigo_interno}</span>
-                    )}
-                  </TableCell>
-                  <TableCell>{nombreCategoria(a.category_id)}</TableCell>
-                  <TableCell>
-                    {nombreTienda(a.store_id)} <span className="text-muted-foreground">/ {nombreSector(a.sector_id)}</span>
-                  </TableCell>
-                  <TableCell>{a.cantidad ?? 1}</TableCell>
-                  <TableCell className="text-xs">
-                    {a.precio_ars ? `$ ${a.precio_ars.toLocaleString("es-AR")}` : ""}
-                    {a.precio_ars && a.precio_usd ? " / " : ""}
-                    {a.precio_usd ? `US$ ${a.precio_usd.toLocaleString("es-AR")}` : ""}
-                  </TableCell>
-                  <TableCell className="text-xs font-medium">
-                    {a.precio_ars ? `$ ${valorTotalARS(a).toLocaleString("es-AR")}` : ""}
-                    {a.precio_ars && a.precio_usd ? " / " : ""}
-                    {a.precio_usd ? `US$ ${valorTotalUSD(a).toLocaleString("es-AR")}` : ""}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={badgeEstado(a.estado)}>{a.estado}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button size="icon" variant="ghost" onClick={() => setQrActivo(a)}>
-                      <QrCode className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                  {esAdmin && (
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => abrirEditar(a)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => abrirTransferencia(a)}>
-                          <ArrowLeftRight className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          disabled={a.estado === "Baja"}
-                          onClick={() => abrirBaja(a)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
+                  </Fragment>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>

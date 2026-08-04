@@ -10,19 +10,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Pencil, Plus, Power } from "lucide-react";
+import { Pencil, Plus, Power, ShieldCheck } from "lucide-react";
 import type { RolUsuario } from "@/lib/db";
 import {
   listarUsuarios,
   actualizarUsuario,
   cambiarEstadoUsuario,
-  invitarUsuario,
+  crearUsuario,
   type UsuarioReal,
 } from "@/lib/usuarios-data";
 import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
 
-const INVITAR_VACIO = { email: "", nombre: "", telefono: "", role_id: "usuario" as RolUsuario };
+const CREAR_VACIO = { email: "", nombre: "", telefono: "", role_id: "usuario" as RolUsuario, contrasena: "" };
 
 export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<UsuarioReal[] | null>(null);
@@ -32,9 +32,9 @@ export default function UsuariosPage() {
   const [busqueda, setBusqueda] = useState("");
   const [guardando, setGuardando] = useState(false);
 
-  const [openInvitar, setOpenInvitar] = useState(false);
-  const [formInvitar, setFormInvitar] = useState(INVITAR_VACIO);
-  const [invitando, setInvitando] = useState(false);
+  const [openCrear, setOpenCrear] = useState(false);
+  const [formCrear, setFormCrear] = useState(CREAR_VACIO);
+  const [creando, setCreando] = useState(false);
 
   const { esAdmin } = useRolActivo();
   const sesion = useSesionDisplay();
@@ -50,10 +50,16 @@ export default function UsuariosPage() {
 
   if (!usuarios) return null;
 
+  const yoSoySuperAdmin = usuarios.find((u) => u.id === sesion.usuarioId)?.super_admin ?? false;
+
   const q = busqueda.trim().toLowerCase();
   const usuariosFiltrados = q
     ? usuarios.filter((u) => u.nombre.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
     : usuarios;
+
+  function puedeGestionar(u: UsuarioReal) {
+    return !u.super_admin || yoSoySuperAdmin;
+  }
 
   function abrirEditar(u: UsuarioReal) {
     setEditId(u.id);
@@ -89,6 +95,10 @@ export default function UsuariosPage() {
       toast.error("No podés desactivar tu propia cuenta");
       return;
     }
+    if (!puedeGestionar(u)) {
+      toast.error("Esta cuenta es super admin, no se puede desactivar");
+      return;
+    }
     try {
       await cambiarEstadoUsuario(u.id, !u.activo);
       await cargar();
@@ -97,26 +107,30 @@ export default function UsuariosPage() {
     }
   }
 
-  function abrirInvitar() {
-    setFormInvitar(INVITAR_VACIO);
-    setOpenInvitar(true);
+  function abrirCrear() {
+    setFormCrear(CREAR_VACIO);
+    setOpenCrear(true);
   }
 
-  async function enviarInvitacion() {
-    if (!formInvitar.email.trim() || !formInvitar.nombre.trim()) {
+  async function confirmarCrear() {
+    if (!formCrear.email.trim() || !formCrear.nombre.trim()) {
       toast.error("Nombre y email son obligatorios");
       return;
     }
-    setInvitando(true);
+    if (formCrear.contrasena.length < 6) {
+      toast.error("La contraseña necesita al menos 6 caracteres");
+      return;
+    }
+    setCreando(true);
     try {
-      await invitarUsuario(formInvitar);
+      await crearUsuario(formCrear);
       await cargar();
-      toast.success(`Invitación enviada a ${formInvitar.email}`);
-      setOpenInvitar(false);
+      toast.success(`Cuenta creada para ${formCrear.email}`);
+      setOpenCrear(false);
     } catch (err) {
-      toast.error("No se pudo invitar: " + (err as Error).message);
+      toast.error("No se pudo crear: " + (err as Error).message);
     } finally {
-      setInvitando(false);
+      setCreando(false);
     }
   }
 
@@ -133,12 +147,12 @@ export default function UsuariosPage() {
   return (
     <div>
       <p className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-        Solo un administrador puede dar de alta cuentas nuevas: usá &quot;Nuevo Usuario&quot; y le llega un email
-        para que elija su propia contraseña. Ya no hay registro abierto desde el login.
+        Solo un administrador puede dar de alta cuentas nuevas: usá &quot;Nuevo Usuario&quot;, elegís una
+        contraseña inicial y se la pasás a esa persona. Ya no hay registro abierto desde el login.
       </p>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-semibold">Gestión de Usuarios</h3>
-        <Button onClick={abrirInvitar}>
+        <Button onClick={abrirCrear}>
           <Plus className="h-4 w-4" /> Nuevo Usuario
         </Button>
       </div>
@@ -170,35 +184,47 @@ export default function UsuariosPage() {
                   </TableCell>
                 </TableRow>
               )}
-              {usuariosFiltrados.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell>
-                    {u.nombre}
-                    {u.id === sesion.usuarioId && <span className="ml-1 text-xs text-muted-foreground">(vos)</span>}
-                  </TableCell>
-                  <TableCell>{u.email}</TableCell>
-                  <TableCell>
-                    <Badge variant={u.role_id === "admin" ? "info" : "secondary"}>
-                      {u.role_id === "admin" ? "Administrador" : "Usuario"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={u.activo ? "success" : "destructive"}>
-                      {u.activo ? "Activo" : "Inactivo"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button size="icon" variant="ghost" onClick={() => abrirEditar(u)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" onClick={() => toggleActivo(u)}>
-                        <Power className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {usuariosFiltrados.map((u) => {
+                const gestionable = puedeGestionar(u);
+                return (
+                  <TableRow key={u.id}>
+                    <TableCell>
+                      {u.nombre}
+                      {u.id === sesion.usuarioId && <span className="ml-1 text-xs text-muted-foreground">(vos)</span>}
+                      {u.super_admin && (
+                        <Badge variant="info" className="ml-2 gap-1">
+                          <ShieldCheck className="h-3 w-3" /> Super Admin
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>{u.email}</TableCell>
+                    <TableCell>
+                      <Badge variant={u.role_id === "admin" ? "info" : "secondary"}>
+                        {u.role_id === "admin" ? "Administrador" : "Usuario"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={u.activo ? "success" : "destructive"}>
+                        {u.activo ? "Activo" : "Inactivo"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {gestionable ? (
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" onClick={() => abrirEditar(u)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => toggleActivo(u)}>
+                            <Power className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Protegida</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
@@ -237,8 +263,8 @@ export default function UsuariosPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Invitar usuario nuevo */}
-      <Dialog open={openInvitar} onOpenChange={setOpenInvitar}>
+      {/* Crear usuario nuevo */}
+      <Dialog open={openCrear} onOpenChange={setOpenCrear}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nuevo Usuario</DialogTitle>
@@ -247,30 +273,30 @@ export default function UsuariosPage() {
             <div>
               <Label>Nombre</Label>
               <Input
-                value={formInvitar.nombre}
-                onChange={(e) => setFormInvitar({ ...formInvitar, nombre: e.target.value })}
+                value={formCrear.nombre}
+                onChange={(e) => setFormCrear({ ...formCrear, nombre: e.target.value })}
               />
             </div>
             <div>
               <Label>Email</Label>
               <Input
                 type="email"
-                value={formInvitar.email}
-                onChange={(e) => setFormInvitar({ ...formInvitar, email: e.target.value })}
+                value={formCrear.email}
+                onChange={(e) => setFormCrear({ ...formCrear, email: e.target.value })}
               />
             </div>
             <div>
               <Label>Teléfono (opcional)</Label>
               <Input
-                value={formInvitar.telefono}
-                onChange={(e) => setFormInvitar({ ...formInvitar, telefono: e.target.value })}
+                value={formCrear.telefono}
+                onChange={(e) => setFormCrear({ ...formCrear, telefono: e.target.value })}
               />
             </div>
             <div>
               <Label>Rol</Label>
               <Select
-                value={formInvitar.role_id}
-                onValueChange={(v) => setFormInvitar({ ...formInvitar, role_id: v as RolUsuario })}
+                value={formCrear.role_id}
+                onValueChange={(v) => setFormCrear({ ...formCrear, role_id: v as RolUsuario })}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -279,14 +305,24 @@ export default function UsuariosPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Contraseña inicial</Label>
+              <Input
+                type="text"
+                placeholder="Mínimo 6 caracteres"
+                value={formCrear.contrasena}
+                onChange={(e) => setFormCrear({ ...formCrear, contrasena: e.target.value })}
+              />
+            </div>
             <p className="text-xs text-muted-foreground">
-              Le va a llegar un email a esa dirección con un link para elegir su propia contraseña.
+              La cuenta queda lista al toque. Pasale esta contraseña a la persona por el medio que prefieras (puede
+              cambiarla después desde &quot;¿Olvidaste tu contraseña?&quot; en el login).
             </p>
           </div>
           <DialogFooter>
-            <Button variant="secondary" onClick={() => setOpenInvitar(false)}>Cancelar</Button>
-            <Button onClick={enviarInvitacion} disabled={invitando}>
-              {invitando ? "Enviando..." : "Enviar invitación"}
+            <Button variant="secondary" onClick={() => setOpenCrear(false)}>Cancelar</Button>
+            <Button onClick={confirmarCrear} disabled={creando}>
+              {creando ? "Creando..." : "Crear usuario"}
             </Button>
           </DialogFooter>
         </DialogContent>

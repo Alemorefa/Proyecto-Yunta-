@@ -40,6 +40,10 @@ create table if not exists public.users (
   telefono text,
   role_id text not null references public.roles(id) default 'usuario',
   activo boolean not null default true,
+  -- La cuenta super admin no puede ser modificada (rol, activo, etc.) por
+  -- otros admins — solo por sí misma. Pensado para que siempre quede al
+  -- menos un admin "a salvo" de que otro admin lo desactive o degrade.
+  super_admin boolean not null default false,
   fecha_creacion timestamptz not null default now()
 );
 
@@ -311,7 +315,7 @@ declare
   t text;
 begin
   for t in
-    select unnest(array['stores', 'sectors', 'categories', 'suppliers', 'settings', 'users'])
+    select unnest(array['stores', 'sectors', 'categories', 'suppliers', 'settings'])
   loop
     execute format('drop policy if exists "escritura_admin" on public.%I', t);
     execute format(
@@ -320,6 +324,30 @@ begin
     );
   end loop;
 end $$;
+
+-- users: caso especial. Un admin puede editar a cualquiera EXCEPTO a la
+-- cuenta marcada como super_admin (ni su rol, ni si está activa, ni nada) —
+-- salvo que quien edita sea justamente esa cuenta super admin.
+alter table public.users add column if not exists super_admin boolean not null default false;
+
+create or replace function public.soy_superadmin()
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select coalesce((select super_admin from public.users where id = auth.uid()), false);
+$$;
+
+drop policy if exists "escritura_admin" on public.users;
+create policy "escritura_admin" on public.users for all
+  to authenticated
+  using (public.es_admin() and (not super_admin or public.soy_superadmin()))
+  with check (public.es_admin() and (not super_admin or public.soy_superadmin()));
+
+-- La primera cuenta que se creó en todo el sistema queda como super admin.
+update public.users set super_admin = true
+where id = (select id from public.users order by fecha_creacion asc limit 1);
 
 -- Escritura solo-admin: inventario y movimientos (usuario es solo lectura).
 do $$

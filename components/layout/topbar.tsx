@@ -79,21 +79,21 @@ export function Topbar({
   const inicial = sesion.nombre.trim().charAt(0).toUpperCase() || "?";
 
   return (
-    <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur md:px-8">
-      <div className="flex items-center gap-3">
-        <button
-          className="rounded-full p-2 text-muted-foreground hover:bg-muted nav:hidden"
-          aria-label="Abrir menú"
-          onClick={onAbrirMenu}
-        >
-          <Menu className="h-5 w-5" />
-        </button>
-        <h2 className="text-lg font-semibold text-foreground">{TITLES[pathname] ?? ""}</h2>
-      </div>
+    <header className="sticky top-0 z-30 flex items-center gap-2 border-b bg-background/95 px-3 py-3 backdrop-blur sm:gap-3 md:px-8">
+      <button
+        className="shrink-0 rounded-full p-2 text-muted-foreground hover:bg-muted nav:hidden"
+        aria-label="Abrir menú"
+        onClick={onAbrirMenu}
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+      <h2 className="max-w-[30vw] shrink-0 truncate text-base font-semibold text-foreground sm:max-w-none sm:text-lg">
+        {TITLES[pathname] ?? ""}
+      </h2>
 
-      <div className="flex items-center gap-2 sm:gap-4">
+      <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.5 sm:flex-none sm:gap-4">
         {/* Buscador global */}
-        <div ref={buscadorRef} className="relative">
+        <div ref={buscadorRef} className="relative min-w-0 flex-1 sm:flex-none">
           <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-2.5 py-1.5">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
             <input
@@ -101,12 +101,12 @@ export function Topbar({
               onChange={(e) => onBuscar(e.target.value)}
               onFocus={() => setBuscadorAbierto(true)}
               placeholder="Buscar..."
-              className="w-24 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground sm:w-40 md:w-56"
+              className="w-full min-w-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground sm:w-40 md:w-56"
             />
           </div>
 
           {buscadorAbierto && busqueda.trim() && (
-            <div className="absolute right-0 top-11 z-50 w-72 overflow-hidden rounded-lg border bg-card shadow-lg">
+            <div className="absolute right-0 top-11 z-50 w-72 max-w-[85vw] overflow-hidden rounded-lg border bg-card shadow-lg">
               {resultados.length === 0 ? (
                 <p className="px-3 py-3 text-sm text-muted-foreground">Sin resultados para &quot;{busqueda}&quot;</p>
               ) : (
@@ -134,7 +134,7 @@ export function Topbar({
         {/* Botón directo para alternar modo oscuro/claro */}
         <button
           onClick={alternar}
-          className="rounded-lg border p-2 text-muted-foreground hover:bg-muted"
+          className="shrink-0 rounded-lg border p-2 text-muted-foreground hover:bg-muted"
           aria-label="Alternar modo oscuro"
           title={tema === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
         >
@@ -142,14 +142,14 @@ export function Topbar({
         </button>
 
         <button
-          className="relative rounded-full p-2 text-muted-foreground hover:bg-muted"
+          className="relative shrink-0 rounded-full p-2 text-muted-foreground hover:bg-muted"
           aria-label="Notificaciones"
         >
           <Bell className="h-5 w-5" />
         </button>
 
         {/* Avatar + menú de usuario */}
-        <div ref={menuRef} className="relative border-l pl-2 sm:pl-4">
+        <div ref={menuRef} className="relative shrink-0 border-l pl-2 sm:pl-4">
           <button
             onClick={() => setMenuAbierto((v) => !v)}
             className="flex items-center gap-2 rounded-lg p-1 hover:bg-muted"
