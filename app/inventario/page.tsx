@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ArrowLeftRight, Download, Pencil, Plus, Printer, QrCode, Trash2, Upload } from "lucide-react";
+import { EscanerQR } from "@/components/inventario/escaner-qr";
 import { idGen, ESTADOS_ACTIVO, type EstadoActivo } from "@/lib/db";
 import {
   listarTiendas,
@@ -169,6 +170,24 @@ function InventarioContenido() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, esAdmin]);
+
+  // Acceso directo desde el escáner QR (?qr=<codigo>): busca el ítem por su
+  // código SKU y abre su ficha directo. El ref evita reabrirla sola cada vez
+  // que la lista se recarga (por ejemplo después de guardar un cambio).
+  const qrProcesadoRef = useRef<string | null>(null);
+  useEffect(() => {
+    const codigoQr = searchParams.get("qr");
+    if (!codigoQr || !activos) return;
+    if (qrProcesadoRef.current === codigoQr) return;
+    qrProcesadoRef.current = codigoQr;
+    const match = activos.find((a) => a.codigo_interno.toLowerCase() === codigoQr.toLowerCase());
+    if (match) {
+      abrirEditar(match);
+    } else {
+      toast.error(`No se encontró ningún ítem con el código "${codigoQr}"`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, activos]);
 
   const activosFiltrados = useMemo(() => {
     if (!activos) return [];
@@ -568,6 +587,7 @@ function InventarioContenido() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-semibold">Inventario</h3>
         <div className="flex flex-wrap gap-2">
+          <EscanerQR />
           <Button variant="outline" onClick={exportar}>
             <Download className="h-4 w-4" /> Exportar Excel
           </Button>
@@ -595,7 +615,7 @@ function InventarioContenido() {
         <Input
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por descripción, código o N° de serie..."
+          placeholder="Buscar por descripción, código SKU o de barra..."
           className="w-full sm:w-64"
         />
         <Select value={filtroTienda} onValueChange={setFiltroTienda}>

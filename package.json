@@ -22,7 +22,8 @@
     "tailwind-merge": "^2.4.0",
     "lucide-react": "^0.427.0",
     "sonner": "^1.5.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "html5-qrcode": "^2.3.8"
   },
   "devDependencies": {
     "typescript": "^5.5.4",
