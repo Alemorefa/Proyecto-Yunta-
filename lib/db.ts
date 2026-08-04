@@ -30,7 +30,7 @@ export type Categoria = {
   nombre: string;
 };
 
-export type EstadoActivo = "Nuevo" | "Bueno" | "Regular" | "Dañado" | "Irreparable" | "Baja";
+export type EstadoActivo = "Nuevo" | "Bueno" | "Malo" | "Baja";
 
 // Un "activo" puede ser una unidad única con número de serie (ej. un
 // servidor) o un ítem agrupado con cantidad (ej. "Cámaras x26 unidades").
@@ -345,4 +345,4 @@ export function seedInitialData() {
   if (changed) saveDB(data);
 }
 
-export const ESTADOS_ACTIVO: EstadoActivo[] = ["Nuevo", "Bueno", "Regular", "Dañado", "Irreparable", "Baja"];
+export const ESTADOS_ACTIVO: EstadoActivo[] = ["Nuevo", "Bueno", "Malo", "Baja"];

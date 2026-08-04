@@ -133,7 +133,7 @@ create table if not exists public.assets (
   modelo text,
   numero_serie text,
   estado text not null default 'Nuevo'
-    check (estado in ('Nuevo', 'Bueno', 'Regular', 'Dañado', 'Irreparable', 'Baja')),
+    check (estado in ('Nuevo', 'Bueno', 'Malo', 'Baja')),
   fecha_compra date,
   supplier_id uuid references public.suppliers(id) on delete set null,
   cantidad integer not null default 1,

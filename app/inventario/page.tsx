@@ -94,7 +94,7 @@ const ACTIVO_VACIO = {
 function badgeEstado(estado: EstadoActivo) {
   if (estado === "Baja") return "destructive";
   if (estado === "Nuevo" || estado === "Bueno") return "success";
-  if (estado === "Regular") return "warning";
+  if (estado === "Malo") return "warning";
   return "secondary";
 }
 
@@ -416,7 +416,7 @@ function InventarioContenido() {
 
   function exportar() {
     const filas = activosFiltrados.map((a) => ({
-      "Código interno": a.codigo_interno,
+      "Código SKU": a.codigo_interno,
       Descripción: a.nombre,
       Categoría: nombreCategoria(a.category_id),
       Tienda: nombreTienda(a.store_id),
@@ -451,7 +451,8 @@ function InventarioContenido() {
         const avisos: string[] = [];
 
         const codigo =
-          pick(row, ["Código interno", "Codigo interno", "codigo_interno", "Código"]) || idGen().toUpperCase();
+          pick(row, ["Código SKU", "Codigo SKU", "SKU", "Código interno", "Codigo interno", "codigo_interno", "Código"]) ||
+          idGen().toUpperCase();
 
         const tiendaTexto = pick(row, ["Tienda"]);
         const tienda = tiendas.find((t) => t.nombre.toLowerCase() === tiendaTexto.toLowerCase());
@@ -777,7 +778,7 @@ function InventarioContenido() {
             </summary>
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label>Código interno</Label>
+                <Label>Código SKU</Label>
                 <Input
                   placeholder="Se genera automático si lo dejás vacío"
                   value={form.codigo_interno}
@@ -813,7 +814,7 @@ function InventarioContenido() {
                 <Input value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })} />
               </div>
               <div>
-                <Label>Número de serie</Label>
+                <Label>Código de Barra</Label>
                 <Input value={form.numero_serie} onChange={(e) => setForm({ ...form, numero_serie: e.target.value })} />
               </div>
               <div>
@@ -977,7 +978,7 @@ function InventarioContenido() {
           <p className="text-sm text-muted-foreground">
             {importPreview.filter((f) => f.estadoFila === "Nuevo").length} ítems nuevos,{" "}
             {importPreview.filter((f) => f.estadoFila === "Actualiza existente").length} van a actualizar un ítem
-            existente (mismo código interno). Revisá los avisos antes de confirmar.
+            existente (mismo código SKU). Revisá los avisos antes de confirmar.
           </p>
           <div className="max-h-96 overflow-y-auto">
             <Table>

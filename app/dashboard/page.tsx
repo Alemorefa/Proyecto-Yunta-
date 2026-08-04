@@ -16,9 +16,7 @@ import { DonutChart } from "@/components/charts/donut-chart";
 const COLOR_ESTADO: Record<string, string> = {
   Nuevo: "#22c55e",
   Bueno: "#4ade80",
-  Regular: "#f59e0b",
-  Dañado: "#f97316",
-  Irreparable: "#ef4444",
+  Malo: "#ef4444",
 };
 
 function money(n: number) {
@@ -83,7 +81,7 @@ export default function DashboardPage() {
       .slice(0, 8);
 
     // Dona: distribución por estado (sin contar las bajas, que ya se ven aparte).
-    const estadoData = (["Nuevo", "Bueno", "Regular", "Dañado", "Irreparable"] as const).map((estado) => ({
+    const estadoData = (["Nuevo", "Bueno", "Malo"] as const).map((estado) => ({
       label: estado,
       value: sumaCantidad(activosVigentes.filter((a) => a.estado === estado)),
       color: COLOR_ESTADO[estado],

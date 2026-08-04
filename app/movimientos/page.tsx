@@ -236,7 +236,7 @@ function MovimientosContenido() {
                   <Select value={estadoNuevo} onValueChange={(v) => setEstadoNuevo(v as EstadoActivo)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {ESTADOS_ACTIVO.map((e) => <SelectItem key={e} value={e}>{e}</SelectItem>)}
+                      {ESTADOS_ACTIVO.filter((e) => e !== "Baja").map((e) => <SelectItem key={e} value={e}>{e}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
