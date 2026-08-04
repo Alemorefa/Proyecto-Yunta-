@@ -10,13 +10,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Pencil, Plus, Power, ShieldCheck } from "lucide-react";
+import { Pencil, Plus, Power, ShieldCheck, Trash2 } from "lucide-react";
 import type { RolUsuario } from "@/lib/db";
 import {
   listarUsuarios,
   actualizarUsuario,
   cambiarEstadoUsuario,
   crearUsuario,
+  eliminarUsuario,
   type UsuarioReal,
 } from "@/lib/usuarios-data";
 import { useRolActivo } from "@/lib/role";
@@ -35,6 +36,7 @@ export default function UsuariosPage() {
   const [openCrear, setOpenCrear] = useState(false);
   const [formCrear, setFormCrear] = useState(CREAR_VACIO);
   const [creando, setCreando] = useState(false);
+  const [eliminandoId, setEliminandoId] = useState<string | null>(null);
 
   const { esAdmin } = useRolActivo();
   const sesion = useSesionDisplay();
@@ -104,6 +106,29 @@ export default function UsuariosPage() {
       await cargar();
     } catch (err) {
       toast.error("No se pudo actualizar: " + (err as Error).message);
+    }
+  }
+
+  async function eliminar(u: UsuarioReal) {
+    if (u.id === sesion.usuarioId) {
+      toast.error("No podés eliminar tu propia cuenta");
+      return;
+    }
+    if (
+      !confirm(
+        `¿Eliminar la cuenta de ${u.nombre} (${u.email})? Esta acción no se puede deshacer: pierde el acceso y su historial queda a nombre de una cuenta borrada.`
+      )
+    )
+      return;
+    setEliminandoId(u.id);
+    try {
+      await eliminarUsuario(u.id);
+      await cargar();
+      toast.success("Usuario eliminado");
+    } catch (err) {
+      toast.error("No se pudo eliminar: " + (err as Error).message);
+    } finally {
+      setEliminandoId(null);
     }
   }
 
@@ -217,6 +242,17 @@ export default function UsuariosPage() {
                           <Button size="icon" variant="ghost" onClick={() => toggleActivo(u)}>
                             <Power className="h-4 w-4" />
                           </Button>
+                          {yoSoySuperAdmin && u.id !== sesion.usuarioId && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => eliminar(u)}
+                              disabled={eliminandoId === u.id}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">Protegida</span>

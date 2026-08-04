@@ -75,3 +75,20 @@ export async function crearUsuario(input: CrearUsuarioInput): Promise<void> {
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || "No se pudo crear el usuario");
 }
+
+// Elimina la cuenta de verdad (no solo la fila de public.users). Solo el
+// super admin puede llamarla — la validación real ocurre del lado del
+// servidor (app/api/admin/eliminar-usuario).
+export async function eliminarUsuario(id: string): Promise<void> {
+  const { data: sesionData } = await supabase.auth.getSession();
+  const token = sesionData.session?.access_token;
+  if (!token) throw new Error("No hay una sesión activa");
+
+  const res = await fetch("/api/admin/eliminar-usuario", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ id }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || "No se pudo eliminar el usuario");
+}

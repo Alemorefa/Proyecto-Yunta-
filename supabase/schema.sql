@@ -44,6 +44,10 @@ create table if not exists public.users (
   -- otros admins — solo por sí misma. Pensado para que siempre quede al
   -- menos un admin "a salvo" de que otro admin lo desactive o degrade.
   super_admin boolean not null default false,
+  -- Foto de perfil como data URL (base64), mismo criterio simplificado que
+  -- ya usan las fotos de inventario (asset_photos.url) — pasar esto a
+  -- Supabase Storage queda como mejora futura.
+  avatar_url text,
   fecha_creacion timestamptz not null default now()
 );
 
@@ -348,6 +352,40 @@ create policy "escritura_admin" on public.users for all
 -- La primera cuenta que se creó en todo el sistema queda como super admin.
 update public.users set super_admin = true
 where id = (select id from public.users order by fecha_creacion asc limit 1);
+
+-- Cualquier usuario autenticado puede editar SU PROPIA fila (para la
+-- pantalla de Preferencias: nombre, foto, teléfono). El trigger de abajo
+-- evita que alguien que no sea admin se cambie el rol/activo/super_admin/
+-- email a través de esta puerta.
+alter table public.users add column if not exists avatar_url text;
+
+drop policy if exists "editar_propio_perfil" on public.users;
+create policy "editar_propio_perfil" on public.users for update
+  to authenticated
+  using (auth.uid() = id)
+  with check (auth.uid() = id);
+
+create or replace function public.proteger_columnas_users()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.es_admin() then
+    new.role_id := old.role_id;
+    new.activo := old.activo;
+    new.super_admin := old.super_admin;
+    new.email := old.email;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists antes_actualizar_users on public.users;
+create trigger antes_actualizar_users
+  before update on public.users
+  for each row execute function public.proteger_columnas_users();
 
 -- Escritura solo-admin: inventario y movimientos (usuario es solo lectura).
 do $$

@@ -3,11 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Bell, Menu, Search, User, Settings, LogOut, Sun, Moon } from "lucide-react";
+import { Bell, Menu, Search, User, Settings, LogOut } from "lucide-react";
 import { useSesionDisplay } from "@/lib/session";
-import { useTema } from "@/lib/theme";
 import { cerrarSesion as cerrarSesionAuth } from "@/lib/auth";
 import { buscarGlobal, type ResultadoBusqueda } from "@/lib/busqueda-global";
+import { PreferenciasDialog } from "./preferencias-dialog";
 
 const TITLES: Record<string, string> = {
   "/": "Inicio",
@@ -30,12 +30,12 @@ export function Topbar({
 }) {
   const router = useRouter();
   const sesion = useSesionDisplay();
-  const { tema, alternar } = useTema();
 
   const [busqueda, setBusqueda] = useState("");
   const [resultados, setResultados] = useState<ResultadoBusqueda[]>([]);
   const [buscadorAbierto, setBuscadorAbierto] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [preferenciasAbiertas, setPreferenciasAbiertas] = useState(false);
 
   const buscadorRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -131,16 +131,6 @@ export function Topbar({
           Conectado
         </span>
 
-        {/* Botón directo para alternar modo oscuro/claro */}
-        <button
-          onClick={alternar}
-          className="shrink-0 rounded-lg border p-2 text-muted-foreground hover:bg-muted"
-          aria-label="Alternar modo oscuro"
-          title={tema === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-        >
-          {tema === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-        </button>
-
         <button
           className="relative shrink-0 rounded-full p-2 text-muted-foreground hover:bg-muted"
           aria-label="Notificaciones"
@@ -154,8 +144,13 @@ export function Topbar({
             onClick={() => setMenuAbierto((v) => !v)}
             className="flex items-center gap-2 rounded-lg p-1 hover:bg-muted"
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--navy-800)] text-sm font-semibold text-white">
-              {inicial}
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--navy-800)] text-sm font-semibold text-white">
+              {sesion.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={sesion.avatarUrl} alt={sesion.nombre} className="h-full w-full object-cover" />
+              ) : (
+                inicial
+              )}
             </div>
             <p className="hidden text-sm font-semibold text-foreground sm:block">{sesion.nombre}</p>
           </button>
@@ -175,7 +170,7 @@ export function Topbar({
               <button
                 onClick={() => {
                   setMenuAbierto(false);
-                  toast.info("Más preferencias próximamente. El modo oscuro ya está disponible en el botón del sol/luna.");
+                  setPreferenciasAbiertas(true);
                 }}
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
               >
@@ -194,6 +189,8 @@ export function Topbar({
           )}
         </div>
       </div>
+
+      <PreferenciasDialog open={preferenciasAbiertas} onOpenChange={setPreferenciasAbiertas} />
     </header>
   );
 }
