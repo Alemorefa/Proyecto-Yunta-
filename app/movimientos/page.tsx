@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ESTADOS_ACTIVO, type EstadoActivo } from "@/lib/db";
-import { listarTiendas, listarSectores, type Tienda, type Sector } from "@/lib/catalogos";
+import { listarTiendas, listarSectores, listarCategorias, type Tienda, type Sector, type Categoria } from "@/lib/catalogos";
 import {
   listarActivos,
   transferirActivo,
@@ -35,7 +35,11 @@ function MovimientosContenido() {
   const [activos, setActivos] = useState<Activo[] | null>(null);
   const [tiendas, setTiendas] = useState<Tienda[]>([]);
   const [sectores, setSectores] = useState<Sector[]>([]);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [busqueda, setBusqueda] = useState("");
+  const [filtroTienda, setFiltroTienda] = useState("todas");
+  const [filtroSector, setFiltroSector] = useState("todos");
+  const [filtroCategoria, setFiltroCategoria] = useState("todas");
   const [activoId, setActivoId] = useState("");
   const [accion, setAccion] = useState<TipoAccion>(
     ACCION_POR_PARAM[searchParams.get("accion") || ""] || "Transferencia"
@@ -51,10 +55,11 @@ function MovimientosContenido() {
   const sesion = useSesionDisplay();
 
   async function cargar() {
-    const [a, t, s] = await Promise.all([listarActivos(), listarTiendas(), listarSectores()]);
+    const [a, t, s, c] = await Promise.all([listarActivos(), listarTiendas(), listarSectores(), listarCategorias()]);
     setActivos(a);
     setTiendas(t);
     setSectores(s);
+    setCategorias(c);
   }
 
   useEffect(() => {
@@ -65,17 +70,21 @@ function MovimientosContenido() {
   const resultados = useMemo(() => {
     if (!activos) return [];
     const q = busqueda.trim().toLowerCase();
-    const activosVivos = activos.filter((a) => a.estado !== "Baja");
+    let activosVivos = activos.filter((a) => a.estado !== "Baja");
+    if (filtroTienda !== "todas") activosVivos = activosVivos.filter((a) => a.store_id === filtroTienda);
+    if (filtroSector !== "todos") activosVivos = activosVivos.filter((a) => a.sector_id === filtroSector);
+    if (filtroCategoria !== "todas") activosVivos = activosVivos.filter((a) => a.category_id === filtroCategoria);
     if (!q) return activosVivos.slice(0, 8);
     return activosVivos
       .filter((a) => a.nombre.toLowerCase().includes(q) || a.codigo_interno.toLowerCase().includes(q))
       .slice(0, 8);
-  }, [activos, busqueda]);
+  }, [activos, busqueda, filtroTienda, filtroSector, filtroCategoria]);
 
   if (!activos) return null;
 
   const activoSeleccionado = activos.find((a) => a.id === activoId);
   const sectoresDeTienda = (tiendaId: string) => sectores.filter((s) => s.store_id === tiendaId);
+  const sectoresDeFiltro = filtroTienda === "todas" ? sectores : sectoresDeTienda(filtroTienda);
 
   async function ejecutar() {
     if (!activoSeleccionado) {
@@ -158,6 +167,37 @@ function MovimientosContenido() {
           <CardTitle className="text-base">1. Buscar activo</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Select value={filtroTienda} onValueChange={(v) => { setFiltroTienda(v); setFiltroSector("todos"); }}>
+              <SelectTrigger className="w-40"><SelectValue placeholder="Tienda" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas las tiendas</SelectItem>
+                {tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={filtroSector} onValueChange={setFiltroSector}>
+              <SelectTrigger className="w-40"><SelectValue placeholder="Sector" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos los sectores</SelectItem>
+                {sectoresDeFiltro.map((s) => <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
+              <SelectTrigger className="w-40"><SelectValue placeholder="Categoría" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas las categorías</SelectItem>
+                {categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {(filtroTienda !== "todas" || filtroSector !== "todos" || filtroCategoria !== "todas") && (
+              <Button
+                variant="secondary"
+                onClick={() => { setFiltroTienda("todas"); setFiltroSector("todos"); setFiltroCategoria("todas"); }}
+              >
+                Limpiar filtros
+              </Button>
+            )}
+          </div>
           <Input
             placeholder="Buscar por nombre o código interno..."
             value={busqueda}
