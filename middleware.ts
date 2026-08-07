@@ -16,9 +16,11 @@ export function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const supabaseWs = supabaseUrl.replace("https://", "wss://");
 
+  const isDev = process.env.NODE_ENV === "development";
+
   const csp = [
     `default-src 'self'`,
-    `script-src 'self' 'unsafe-inline'`,
+    `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
     // Radix/shadcn posicionan popovers y diálogos con style="" inline; sin
     // esto se rompen los menús y selects.
     `style-src 'self' 'unsafe-inline'`,
