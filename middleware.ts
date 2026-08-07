@@ -24,7 +24,8 @@ export function middleware(request: NextRequest) {
     // Radix/shadcn posicionan popovers y diálogos con style="" inline; sin
     // esto se rompen los menús y selects.
     `style-src 'self' 'unsafe-inline'`,
-    `img-src 'self' data: blob:`,
+    // api.qrserver.com genera la imagen del QR para la etiqueta imprimible.
+    `img-src 'self' data: blob: https://api.qrserver.com`,
     `font-src 'self' data:`,
     `connect-src 'self' ${supabaseUrl} ${supabaseWs}`,
     // El escáner QR (html5-qrcode) decodifica en un web worker cargado
