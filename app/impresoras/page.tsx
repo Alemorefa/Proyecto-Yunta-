@@ -63,6 +63,7 @@ export default function ImpresorasPage() {
   const [guardandoImpresora, setGuardandoImpresora] = useState(false);
 
   const [openMov, setOpenMov] = useState(false);
+  const [tiendaMov, setTiendaMov] = useState("");
   const [impresoraId, setImpresoraId] = useState("");
   const [fecha, setFecha] = useState(hoyISO());
   const [tipo, setTipo] = useState<TipoMovimientoImpresora>("Recarga");
@@ -142,12 +143,25 @@ export default function ImpresorasPage() {
   }
 
   function abrirRegistrarMovimiento(idImpresora?: string) {
+    const imp = idImpresora ? impresoras?.find((i) => i.id === idImpresora) : undefined;
+    setTiendaMov(imp?.store_id || "");
     setImpresoraId(idImpresora || "");
     setFecha(hoyISO());
     setTipo("Recarga");
     setObservacion("");
     setOpenMov(true);
   }
+
+  function cambiarTiendaMov(id: string) {
+    setTiendaMov(id);
+    // Si la impresora elegida no es de la nueva tienda, se limpia — hay
+    // modelos repetidos entre tiendas (ej. HL 1200 en Vélez y en Centro) y
+    // no queremos que quede seleccionada la de otra sucursal por error.
+    const impActual = impresoras?.find((i) => i.id === impresoraId);
+    if (impActual && impActual.store_id !== id) setImpresoraId("");
+  }
+
+  const impresorasDeLaTiendaMov = impresoras.filter((i) => i.store_id === tiendaMov);
 
   async function guardarMovimiento() {
     if (!impresoraId) {
@@ -183,7 +197,7 @@ export default function ImpresorasPage() {
         Fecha: m.fecha,
         "Tipo de movimiento": m.tipo,
         Observación: m.observacion || "",
-        Cálculo: calcularMensajeMovimiento(calculo, m.printer_id, m.fecha, undefined),
+        Cálculo: calcularMensajeMovimiento(calculo, m.printer_id, m.fecha, m.id),
       };
     });
     exportarExcel(filas, `impresoras-movimientos-${hoyISO()}`, "Impresoras");
@@ -258,7 +272,7 @@ export default function ImpresorasPage() {
               {movimientosVisibles.map((m) => {
                 const imp = impresora(m.printer_id);
                 const calculo = paraCalculo(movimientosImpresora);
-                const mensaje = calcularMensajeMovimiento(calculo, m.printer_id, m.fecha);
+                const mensaje = calcularMensajeMovimiento(calculo, m.printer_id, m.fecha, m.id);
                 const expandido = expandidos.has(m.id);
                 return (
                   <Fragment key={m.id}>
@@ -368,20 +382,29 @@ export default function ImpresorasPage() {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label>Impresora</Label>
-              <Select value={impresoraId} onValueChange={setImpresoraId}>
+              <Label>Tienda</Label>
+              <Select value={tiendaMov} onValueChange={cambiarTiendaMov}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                 <SelectContent>
-                  {impresoras.map((i) => (
-                    <SelectItem key={i.id} value={i.id}>
-                      {i.modelo} · {nombreTienda(i.store_id)}
-                    </SelectItem>
+                  {tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Impresora</Label>
+              <Select value={impresoraId} onValueChange={setImpresoraId} disabled={!tiendaMov}>
+                <SelectTrigger>
+                  <SelectValue placeholder={tiendaMov ? "Seleccionar" : "Elegí primero una tienda"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {impresorasDeLaTiendaMov.map((i) => (
+                    <SelectItem key={i.id} value={i.id}>{i.modelo}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {impresoras.length === 0 && (
+              {tiendaMov && impresorasDeLaTiendaMov.length === 0 && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Primero agregá una impresora con el botón &quot;Nueva impresora&quot;.
+                  Esa tienda no tiene impresoras cargadas todavía — agregá una con &quot;Nueva impresora&quot;.
                 </p>
               )}
             </div>
