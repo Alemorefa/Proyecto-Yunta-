@@ -18,6 +18,10 @@ export type UsuarioReal = {
   activo: boolean;
   super_admin: boolean;
   avatar_url?: string | null;
+  // Tienda a la que queda limitada esta cuenta (null = ve todas). Solo
+  // aplica de verdad si role_id es "usuario", o si es "admin" y alguien
+  // (el super admin) se la asignó a propósito.
+  store_id: string | null;
   fecha_creacion: string;
 };
 
@@ -31,6 +35,7 @@ export type UsuarioInput = {
   nombre: string;
   telefono: string;
   role_id: RolUsuario;
+  store_id: string | null;
 };
 
 export async function actualizarUsuario(id: string, input: UsuarioInput): Promise<void> {
@@ -40,8 +45,18 @@ export async function actualizarUsuario(id: string, input: UsuarioInput): Promis
       nombre: input.nombre.trim(),
       telefono: input.telefono.trim() || null,
       role_id: input.role_id,
+      store_id: input.store_id,
     })
     .eq("id", id);
+  if (error) throw error;
+}
+
+// Nombrar (o sacarle) el rol de super admin a otra cuenta. La base lo deja
+// pasar solo si quien llama YA es super admin (política "escritura_admin"
+// de public.users) — este chequeo del lado del cliente es nada más para dar
+// un error claro antes de intentarlo.
+export async function cambiarSuperAdmin(id: string, superAdmin: boolean): Promise<void> {
+  const { error } = await supabase.from("users").update({ super_admin: superAdmin }).eq("id", id);
   if (error) throw error;
 }
 
@@ -56,6 +71,7 @@ export type CrearUsuarioInput = {
   telefono: string;
   role_id: RolUsuario;
   contrasena: string;
+  store_id: string | null;
 };
 
 // Da de alta una cuenta nueva con una contraseña que elige el admin en el

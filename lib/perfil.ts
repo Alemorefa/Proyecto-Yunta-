@@ -30,4 +30,11 @@ export async function cambiarMiContrasena(email: string, actual: string, nueva: 
 
   const { error } = await supabase.auth.updateUser({ password: nueva });
   if (error) throw error;
+
+  // Cierra cualquier OTRA sesión activa de esta cuenta (otro navegador, otro
+  // celular, o un token robado) sin tocar la sesión actual. Recomendado en
+  // la auditoría del 2026-08-05: como el token vive en localStorage y no en
+  // una cookie httpOnly, esto limita cuánto puede durar un token robado si
+  // en algún momento se filtra.
+  await supabase.auth.signOut({ scope: "others" });
 }
