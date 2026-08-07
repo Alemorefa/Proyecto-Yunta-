@@ -8,9 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Plus,
-  ArrowLeftRight,
   ArrowDownCircle,
-  History,
   Store,
   Package,
   Users,
@@ -25,18 +23,7 @@ import { formatDate, type AccionMovimiento } from "@/lib/db";
 import { listarTiendas, listarCategorias, type Tienda, type Categoria } from "@/lib/catalogos";
 import { listarActivos, type Activo } from "@/lib/inventario-data";
 import { listarMovimientos, listarUsuariosBasico, type Movimiento, type UsuarioBasico } from "@/lib/movimientos-data";
-import { useRolActivo } from "@/lib/role";
 import { getUltimoBackup } from "@/lib/backup";
-
-// Accesos rápidos: cada uno navega a la pantalla correspondiente ya lista
-// para actuar (diálogo de alta abierto, tipo de movimiento preseleccionado).
-// Los mismos destinos se disparan con el mouse o con el atajo de teclado.
-const ACCESOS_RAPIDOS = [
-  { tecla: "N", label: "Nuevo ítem", href: "/inventario?abrir=nuevo", icon: Plus, soloAdmin: true },
-  { tecla: "T", label: "Transferencia", href: "/movimientos?accion=transferencia", icon: ArrowLeftRight, soloAdmin: true },
-  { tecla: "B", label: "Baja", href: "/movimientos?accion=baja", icon: ArrowDownCircle, soloAdmin: true },
-  { tecla: "H", label: "Historial", href: "/historial", icon: History, soloAdmin: false },
-] as const;
 
 function iconoAccion(accion: AccionMovimiento) {
   switch (accion) {
@@ -60,7 +47,6 @@ export default function InicioPage() {
   const [usuarios, setUsuarios] = useState<UsuarioBasico[]>([]);
   const [cargado, setCargado] = useState(false);
   const [ultimoBackup, setUltimoBackup] = useState<string | null>(null);
-  const { esAdmin } = useRolActivo();
 
   useEffect(() => {
     Promise.all([listarTiendas(), listarActivos(), listarCategorias(), listarMovimientos(), listarUsuariosBasico()])
@@ -80,27 +66,6 @@ export default function InicioPage() {
     if (mensaje) toast.info(mensaje);
     router.push(href);
   }
-
-  // Atajos de teclado N/T/B/H: se ignoran mientras el usuario está
-  // escribiendo en un campo, o si hay una tecla modificadora presionada.
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      const target = e.target as HTMLElement | null;
-      const escribiendo =
-        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
-      if (escribiendo || e.ctrlKey || e.metaKey || e.altKey) return;
-
-      const key = e.key.toLowerCase();
-      const accion = ACCESOS_RAPIDOS.find((a) => a.tecla.toLowerCase() === key);
-      if (!accion) return;
-      if (accion.soloAdmin && !esAdmin) return;
-      e.preventDefault();
-      irA(accion.href, `Acceso rápido: ${accion.label} (${accion.tecla})`);
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [esAdmin]);
 
   const resumen = useMemo(
     () => [
@@ -182,36 +147,6 @@ export default function InicioPage() {
         <p className="opacity-80">
           Administrá los activos físicos de todas las sucursales: altas, transferencias, bajas e historial.
         </p>
-      </div>
-
-      {/* Accesos rápidos: solo en mobile (por debajo del breakpoint del drawer) */}
-      <div className="nav:hidden">
-        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Accesos rápidos
-        </h3>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {ACCESOS_RAPIDOS.filter((a) => !a.soloAdmin || esAdmin).map((a) => {
-            const Icon = a.icon;
-            return (
-              <button
-                key={a.href}
-                onClick={() => irA(a.href)}
-                className="group flex items-center gap-3 rounded-xl border bg-card p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-                  <Icon className="h-5 w-5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-foreground">{a.label}</span>
-                  <span className="text-xs text-muted-foreground">Atajo: {a.tecla}</span>
-                </span>
-                <kbd className="hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground sm:block">
-                  {a.tecla}
-                </kbd>
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       {/* KPIs con CTA contextual */}

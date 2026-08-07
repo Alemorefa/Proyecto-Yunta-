@@ -3,11 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Bell, Menu, Search, User, Settings, LogOut } from "lucide-react";
+import { Bell, Menu, Search, User, Settings, LogOut, Keyboard } from "lucide-react";
 import { useSesionDisplay } from "@/lib/session";
 import { cerrarSesion as cerrarSesionAuth } from "@/lib/auth";
 import { buscarGlobal, type ResultadoBusqueda } from "@/lib/busqueda-global";
 import { PreferenciasDialog } from "./preferencias-dialog";
+import { AtajosDialog } from "./atajos-dialog";
+import { ATAJOS } from "@/lib/atajos";
+import { useRolActivo } from "@/lib/role";
 
 const TITLES: Record<string, string> = {
   "/": "Inicio",
@@ -30,16 +33,40 @@ export function Topbar({
 }) {
   const router = useRouter();
   const sesion = useSesionDisplay();
+  const { esAdmin } = useRolActivo();
 
   const [busqueda, setBusqueda] = useState("");
   const [resultados, setResultados] = useState<ResultadoBusqueda[]>([]);
   const [buscadorAbierto, setBuscadorAbierto] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [preferenciasAbiertas, setPreferenciasAbiertas] = useState(false);
+  const [atajosAbiertos, setAtajosAbiertos] = useState(false);
 
   const buscadorRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const busquedaIdRef = useRef(0);
+
+  // Escucha global de atajos de teclado (N, T, B, H)
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const escribiendo =
+        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
+      if (escribiendo || e.ctrlKey || e.metaKey || e.altKey) return;
+
+      const key = e.key.toLowerCase();
+      const atajo = ATAJOS.find((a) => a.tecla.toLowerCase() === key);
+      if (!atajo) return;
+      if (atajo.soloAdmin && !esAdmin) return;
+
+      e.preventDefault();
+      toast.info(`Acceso rápido: ${atajo.label} (${atajo.tecla})`);
+      router.push(atajo.href);
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [esAdmin, router]);
 
   // Cierra buscador/menú de usuario al hacer click afuera.
   useEffect(() => {
@@ -150,7 +177,6 @@ export function Topbar({
 
           {menuAbierto && (
             <div className="absolute right-0 top-12 z-50 w-56 rounded-lg border bg-card p-1 shadow-lg">
-
               <button
                 onClick={() => {
                   setMenuAbierto(false);
@@ -159,6 +185,16 @@ export function Topbar({
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
               >
                 <Settings className="h-4 w-4" /> Preferencias
+              </button>
+
+              <button
+                onClick={() => {
+                  setMenuAbierto(false);
+                  setAtajosAbiertos(true);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
+              >
+                <Keyboard className="h-4 w-4" /> Atajos
               </button>
 
               <div className="my-1 border-t" />
@@ -175,6 +211,8 @@ export function Topbar({
       </div>
 
       <PreferenciasDialog open={preferenciasAbiertas} onOpenChange={setPreferenciasAbiertas} />
+      <AtajosDialog open={atajosAbiertos} onOpenChange={setAtajosAbiertos} />
     </header>
   );
 }
+
