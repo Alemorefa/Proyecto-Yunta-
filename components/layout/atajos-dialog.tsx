@@ -31,18 +31,19 @@ export function AtajosDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-md sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
+          <DialogTitle className="flex items-center gap-2 text-xl font-bold text-foreground">
             <Keyboard className="h-5 w-5 text-primary" />
             Atajos del Sistema
           </DialogTitle>
           <p className="text-xs text-muted-foreground">
-            Podés presionar la tecla directa desde cualquier lugar del sistema o hacer clic para acceder de inmediato.
+            Accedé rápidamente haciendo clic en cualquier recuadro o presionando la tecla indicada.
           </p>
         </DialogHeader>
 
-        <div className="space-y-2.5 py-2">
+        {/* Grid de 4 cuadritos con alto contraste y hover sutil */}
+        <div className="grid grid-cols-2 gap-3.5 py-3">
           {ATAJOS.map((atajo) => {
             const Icon = atajo.icon;
             const restringido = atajo.soloAdmin && !esAdmin;
@@ -52,41 +53,51 @@ export function AtajosDialog({
                 key={atajo.tecla}
                 type="button"
                 onClick={() => ejecutarAtajo(atajo.href, atajo.label, atajo.soloAdmin)}
-                className={`group flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-all ${
+                className={`relative flex flex-col justify-between rounded-xl border-2 p-4 text-left transition-colors duration-150 ${
                   restringido
-                    ? "cursor-not-allowed opacity-60 bg-muted/30"
-                    : "bg-card hover:-translate-y-0.5 hover:border-primary/50 hover:bg-accent/40 hover:shadow-sm"
+                    ? "cursor-not-allowed opacity-50 bg-muted/30 border-muted"
+                    : "bg-card border-border hover:border-foreground/40 hover:bg-muted/40 shadow-xs"
                 }`}
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <Icon className="h-5 w-5" />
+                {/* Fila superior: Ícono y Tecla con alto contraste */}
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg border bg-muted text-foreground">
+                    <Icon className="h-5 w-5 text-foreground" />
+                  </div>
+
+                  {/* Tecla badge súper clara y legible */}
+                  <kbd className="inline-flex h-9 min-w-[36px] items-center justify-center rounded-lg border-2 border-primary bg-primary text-primary-foreground px-3 font-mono text-base font-black shadow-xs">
+                    {atajo.tecla}
+                  </kbd>
                 </div>
 
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-foreground">{atajo.label}</span>
+                {/* Título y descripción */}
+                <div className="mt-4">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-bold text-base text-foreground">
+                      {atajo.label}
+                    </span>
                     {atajo.soloAdmin && (
-                      <Badge variant="outline" className="text-[10px] font-medium py-0 px-1.5 border-amber-500/40 text-amber-600 dark:text-amber-400">
+                      <Badge variant="outline" className="text-[10px] font-semibold py-0 px-1.5 border-amber-500/60 text-amber-600 dark:text-amber-400">
                         Admin
                       </Badge>
                     )}
                   </div>
-                  <p className="truncate text-xs text-muted-foreground">{atajo.descripcion}</p>
-                </div>
-
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-[11px] text-muted-foreground font-medium">Tecla</span>
-                  <kbd className="inline-flex h-7 min-w-[28px] items-center justify-center rounded-md border bg-muted px-2 font-mono text-xs font-semibold shadow-xs">
-                    {atajo.tecla}
-                  </kbd>
+                  <p className="mt-1 text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                    {atajo.descripcion}
+                  </p>
                 </div>
               </button>
             );
           })}
         </div>
 
-        <DialogFooter>
-          <Button variant="secondary" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="flex flex-col sm:flex-row items-center justify-between gap-2 border-t pt-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted font-mono text-[10px] font-bold text-foreground">SHIFT</kbd>
+            <span>Mantené presionado <strong className="text-foreground">Shift</strong> para ver este cuadro en cualquier momento.</span>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => onOpenChange(false)}>
             Cerrar
           </Button>
         </DialogFooter>

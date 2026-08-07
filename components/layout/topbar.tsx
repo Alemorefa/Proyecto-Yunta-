@@ -46,13 +46,27 @@ export function Topbar({
   const menuRef = useRef<HTMLDivElement>(null);
   const busquedaIdRef = useRef(0);
 
-  // Escucha global de atajos de teclado (N, T, B, H)
+  // Escucha global de atajos de teclado (N, T, B, H) y despliegue al mantener presionado SHIFT
   useEffect(() => {
+    let shiftHeld = false;
+
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
       const escribiendo =
         target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
-      if (escribiendo || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (escribiendo) return;
+
+      // Si presiona la tecla Shift sola, mostrar el diálogo de cuadritos
+      if (e.key === "Shift" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        if (!shiftHeld) {
+          shiftHeld = true;
+          setAtajosAbiertos(true);
+        }
+        return;
+      }
+
+      if (e.ctrlKey || e.metaKey) return;
 
       const key = e.key.toLowerCase();
       const atajo = ATAJOS.find((a) => a.tecla.toLowerCase() === key);
@@ -60,12 +74,36 @@ export function Topbar({
       if (atajo.soloAdmin && !esAdmin) return;
 
       e.preventDefault();
+      shiftHeld = false;
+      setAtajosAbiertos(false);
       toast.info(`Acceso rápido: ${atajo.label} (${atajo.tecla})`);
       router.push(atajo.href);
     }
 
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.key === "Shift") {
+        if (shiftHeld) {
+          shiftHeld = false;
+          setAtajosAbiertos(false);
+        }
+      }
+    }
+
+    function onBlur() {
+      if (shiftHeld) {
+        shiftHeld = false;
+        setAtajosAbiertos(false);
+      }
+    }
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
   }, [esAdmin, router]);
 
   // Cierra buscador/menú de usuario al hacer click afuera.
