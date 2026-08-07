@@ -29,6 +29,7 @@ export type Activo = {
   fecha_creacion: string;
   fecha_baja: string | null;
   motivo_baja: string | null;
+  foto_url?: string | null;
 };
 
 export function valorTotalARS(a: Pick<Activo, "cantidad" | "precio_ars">) {
