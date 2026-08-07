@@ -31,6 +31,7 @@ import {
   actualizarActivo,
   transferirActivo,
   darDeBajaActivo,
+  reducirCantidadActivo,
   registrarMovimientoActivo,
   reemplazarFotoActivo,
   buscarOCrearProveedor,
@@ -129,6 +130,7 @@ function InventarioContenido() {
 
   const [baja, setBaja] = useState<Activo | null>(null);
   const [motivoBaja, setMotivoBaja] = useState("");
+  const [cantidadBaja, setCantidadBaja] = useState(1);
 
   const [qrActivo, setQrActivo] = useState<Activo | null>(null);
   const [fotoZoom, setFotoZoom] = useState<{ url: string; titulo: string } | null>(null);
@@ -205,6 +207,7 @@ function InventarioContenido() {
     if (!activos) return [];
     const q = busqueda.trim().toLowerCase();
     return activos.filter((a) => {
+      if (a.estado === "Baja" && filtroEstado !== "Baja") return false;
       if (filtroTienda !== "todas" && a.store_id !== filtroTienda) return false;
       if (filtroCategoria !== "todas" && a.category_id !== filtroCategoria) return false;
       if (filtroEstado !== "todas" && a.estado !== filtroEstado) return false;
@@ -391,6 +394,7 @@ function InventarioContenido() {
   function abrirBaja(a: Activo) {
     setBaja(a);
     setMotivoBaja("");
+    setCantidadBaja(1);
   }
 
   async function confirmarBaja() {
@@ -398,17 +402,29 @@ function InventarioContenido() {
       toast.error("Indica el motivo de la baja");
       return;
     }
+    const totalActual = baja.cantidad ?? 1;
+    const aDarDeBaja = totalActual > 1 ? cantidadBaja : totalActual;
+    if (aDarDeBaja < 1 || aDarDeBaja > totalActual) {
+      toast.error("Cantidad inválida");
+      return;
+    }
     try {
-      await darDeBajaActivo(baja.id, motivoBaja);
+      const esBajaTotal = aDarDeBaja >= totalActual;
+      if (esBajaTotal) {
+        await darDeBajaActivo(baja.id, motivoBaja);
+      } else {
+        await reducirCantidadActivo(baja.id, totalActual - aDarDeBaja);
+      }
       await registrarMovimientoActivo({
         activo_id: baja.id,
         accion: "Baja",
-        observacion: motivoBaja.trim(),
+        observacion:
+          totalActual > 1 ? `${aDarDeBaja} de ${totalActual} unidad(es) — ${motivoBaja.trim()}` : motivoBaja.trim(),
         usuario_id: sesion.usuarioId ?? null,
       });
       await cargar();
       setBaja(null);
-      toast.success("Ítem dado de baja");
+      toast.success(esBajaTotal ? "Ítem dado de baja" : "Baja parcial registrada");
     } catch (err) {
       toast.error("No se pudo dar de baja el ítem: " + (err as Error).message);
     }
@@ -1089,6 +1105,18 @@ function InventarioContenido() {
           <DialogHeader>
             <DialogTitle>Dar de baja &quot;{baja?.nombre}&quot;</DialogTitle>
           </DialogHeader>
+          {baja && (baja.cantidad ?? 1) > 1 && (
+            <div>
+              <Label>Cantidad a dar de baja (de {baja.cantidad})</Label>
+              <Input
+                type="number"
+                min={1}
+                max={baja.cantidad ?? 1}
+                value={cantidadBaja}
+                onChange={(e) => setCantidadBaja(Math.max(1, Math.min(baja.cantidad ?? 1, parseInt(e.target.value) || 1)))}
+              />
+            </div>
+          )}
           <div>
             <Label>Motivo</Label>
             <Input

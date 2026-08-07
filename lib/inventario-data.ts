@@ -140,6 +140,13 @@ export async function darDeBajaActivo(id: string, motivo: string): Promise<void>
   if (error) throw error;
 }
 
+// Baja parcial: cuando un ítem tiene cantidad > 1 y solo se rompe/pierde
+// alguna unidad, esto resta del total en vez de dar de baja todo el lote.
+export async function reducirCantidadActivo(id: string, nuevaCantidad: number): Promise<void> {
+  const { error } = await supabase.from("assets").update({ cantidad: nuevaCantidad }).eq("id", id);
+  if (error) throw error;
+}
+
 export async function cambiarEstadoActivo(id: string, estado: EstadoActivo): Promise<void> {
   const { error } = await supabase.from("assets").update({ estado }).eq("id", id);
   if (error) throw error;
