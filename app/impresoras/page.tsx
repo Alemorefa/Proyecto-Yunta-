@@ -143,7 +143,7 @@ export default function ImpresorasPage() {
   }
 
   function abrirRegistrarMovimiento(idImpresora?: string) {
-    const imp = idImpresora ? impresoras.find((i) => i.id === idImpresora) : undefined;
+    const imp = idImpresora ? impresoras?.find((i) => i.id === idImpresora) : undefined;
     setTiendaMov(imp?.store_id || "");
     setImpresoraId(idImpresora || "");
     setFecha(hoyISO());
@@ -157,7 +157,7 @@ export default function ImpresorasPage() {
     // Si la impresora elegida no es de la nueva tienda, se limpia — hay
     // modelos repetidos entre tiendas (ej. HL 1200 en Vélez y en Centro) y
     // no queremos que quede seleccionada la de otra sucursal por error.
-    const impActual = impresoras.find((i) => i.id === impresoraId);
+    const impActual = impresoras?.find((i) => i.id === impresoraId);
     if (impActual && impActual.store_id !== id) setImpresoraId("");
   }
 
