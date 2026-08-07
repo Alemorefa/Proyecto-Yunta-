@@ -17,6 +17,7 @@ export type UsuarioReal = {
   role_id: RolUsuario;
   activo: boolean;
   super_admin: boolean;
+  avatar_url?: string | null;
   fecha_creacion: string;
 };
 
