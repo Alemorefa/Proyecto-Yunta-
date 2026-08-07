@@ -1,25 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Content-Security-Policy con nonce por request (patrón oficial de Next.js).
-// Es la cabecera más urgente de la auditoría del 2026-08-05: mitiga XSS, que
-// es justamente el vector que importa porque el token de sesión de Supabase
-// vive en localStorage (no en cookie httpOnly). Si un atacante no puede
-// inyectar <script> ajenos a la app, no puede leer ese token.
+// Content-Security-Policy. Primer intento: nonce por request + strict-dynamic
+// (el patrón "de libro" de Next.js) — en la práctica, en el build real de
+// Vercel, Next.js NO le puso el nonce a sus propios scripts (webpack.js,
+// main-app.js, etc.) y la CSP terminó bloqueando toda la app (pantalla en
+// blanco). Puede ser una diferencia de versión o de cómo Next arma los
+// chunks en este proyecto — no vale la pena perseguirlo más.
 //
-// Va en middleware (no en next.config.mjs) porque el nonce tiene que ser
-// aleatorio en cada respuesta — Next.js detecta el nonce en esta cabecera y
-// lo aplica solo a los scripts que él mismo genera para hidratar la página.
+// Versión simple y ya probada: 'self' + 'unsafe-inline' para scripts. Sigue
+// bloqueando lo importante (que se cargue un <script> desde un dominio
+// ajeno), que es el vector real dado que el token vive en localStorage —
+// solo no protege contra un script INYECTADO inline dentro del HTML de la
+// propia página, un caso más acotado.
 export function middleware(request: NextRequest) {
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const supabaseWs = supabaseUrl.replace("https://", "wss://");
 
   const csp = [
     `default-src 'self'`,
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    `script-src 'self' 'unsafe-inline'`,
     // Radix/shadcn posicionan popovers y diálogos con style="" inline; sin
-    // esto se rompen los menús y selects. El riesgo de XSS vía CSS es bajo
-    // comparado con script-src, por eso es un trade-off aceptado.
+    // esto se rompen los menús y selects.
     `style-src 'self' 'unsafe-inline'`,
     `img-src 'self' data: blob:`,
     `font-src 'self' data:`,
@@ -34,21 +35,11 @@ export function middleware(request: NextRequest) {
     `upgrade-insecure-requests`,
   ].join("; ");
 
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-nonce", nonce);
-  requestHeaders.set("Content-Security-Policy", csp);
-
-  const response = NextResponse.next({
-    request: { headers: requestHeaders },
-  });
+  const response = NextResponse.next();
   response.headers.set("Content-Security-Policy", csp);
   return response;
 }
 
 export const config = {
-  matcher: [
-    // Todo menos assets estáticos y la imagen optimizada de Next — no tiene
-    // sentido calcular un nonce para un .png.
-    "/((?!_next/static|_next/image|favicon.ico).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
