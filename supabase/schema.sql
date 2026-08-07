@@ -466,3 +466,134 @@ end $$;
 drop policy if exists "insertar_cotizacion" on public.exchange_rates;
 create policy "insertar_cotizacion" on public.exchange_rates for insert
   to authenticated with check (public.mi_activo());
+
+-- ============================================================================
+-- Alcance por tienda (multi-sucursal / "juntas"): un usuario o un admin
+-- puede quedar limitado a ver una sola tienda.
+--   - super_admin: siempre ve todo, sin importar store_id.
+--   - admin SIN tienda asignada (store_id null): ve todo — es el
+--     comportamiento de siempre, no rompe nada para los admins actuales.
+--   - admin CON tienda asignada: ve solo esa tienda. Asignarle o cambiarle
+--     la tienda a un admin es una acción que SOLO puede hacer el super
+--     admin, porque cambia el alcance de otro admin.
+--   - usuario: ve solo la tienda que tenga asignada. Sin tienda asignada,
+--     no ve nada (default más seguro: hay que asignarla a propósito, no
+--     queda "abierto" por accidente).
+-- ============================================================================
+
+alter table public.users add column if not exists store_id uuid references public.stores(id) on delete set null;
+
+-- Un super admin siempre es admin también (evita el estado raro de un
+-- "usuario" con super_admin = true).
+alter table public.users drop constraint if exists super_admin_implica_admin;
+alter table public.users add constraint super_admin_implica_admin
+  check (not super_admin or role_id = 'admin');
+
+create or replace function public.mi_tienda()
+returns uuid
+language sql
+security definer
+stable
+as $$
+  select store_id from public.users where id = auth.uid() and activo = true;
+$$;
+
+-- true si esta cuenta tiene que ver TODAS las tiendas (super admin, o admin
+-- sin tienda asignada).
+create or replace function public.veo_todas_las_tiendas()
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select coalesce(
+    (select super_admin or (role_id = 'admin' and store_id is null)
+     from public.users where id = auth.uid() and activo = true),
+    false
+  );
+$$;
+
+-- Tablas con store_id propio: ven todo si veo_todas_las_tiendas(), si no
+-- solo las filas de su tienda.
+do $$
+declare
+  t text;
+begin
+  for t in select unnest(array['assets', 'printers', 'sectors'])
+  loop
+    execute format('drop policy if exists "select_autenticados" on public.%I', t);
+    execute format(
+      'create policy "select_autenticados" on public.%I for select to authenticated using (public.mi_activo() and (public.veo_todas_las_tiendas() or store_id = public.mi_tienda()))',
+      t
+    );
+  end loop;
+end $$;
+
+-- asset_movements: no tiene un único store_id (tiene origen y destino). Se
+-- ve si la tienda propia es cualquiera de las dos — así se ve tanto lo que
+-- sale como lo que entra a la tienda de uno.
+drop policy if exists "select_autenticados" on public.asset_movements;
+create policy "select_autenticados" on public.asset_movements for select
+  to authenticated
+  using (
+    public.mi_activo() and (
+      public.veo_todas_las_tiendas()
+      or store_origen_id = public.mi_tienda()
+      or store_destino_id = public.mi_tienda()
+    )
+  );
+
+-- asset_history / asset_photos: cuelgan de un activo, no tienen store_id
+-- propio — se resuelve mirando la tienda del activo al que pertenecen.
+do $$
+declare
+  t text;
+begin
+  for t in select unnest(array['asset_history', 'asset_photos'])
+  loop
+    execute format('drop policy if exists "select_autenticados" on public.%I', t);
+    execute format(
+      'create policy "select_autenticados" on public.%I for select to authenticated using (public.mi_activo() and (public.veo_todas_las_tiendas() or exists (select 1 from public.assets a where a.id = %I.asset_id and a.store_id = public.mi_tienda())))',
+      t, t
+    );
+  end loop;
+end $$;
+
+-- printer_movements: cuelga de una impresora, misma lógica vía printers.
+drop policy if exists "select_autenticados" on public.printer_movements;
+create policy "select_autenticados" on public.printer_movements for select
+  to authenticated
+  using (
+    public.mi_activo() and (
+      public.veo_todas_las_tiendas()
+      or exists (
+        select 1 from public.printers p
+        where p.id = printer_movements.printer_id and p.store_id = public.mi_tienda()
+      )
+    )
+  );
+
+-- Asignar o cambiar la tienda de una cuenta que (va a) ser admin es una
+-- acción sensible porque cambia su alcance — solo el super admin puede
+-- hacerlo. Para una cuenta "usuario" cualquier admin la puede asignar,
+-- como ya podía editar el resto de sus datos.
+create or replace function public.proteger_asignacion_tienda_admin()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.store_id is distinct from old.store_id
+     and new.role_id = 'admin'
+     and not public.soy_superadmin() then
+    raise exception 'Solo el super admin puede asignar o cambiar la tienda de un administrador';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists antes_actualizar_tienda_admin on public.users;
+create trigger antes_actualizar_tienda_admin
+  before update on public.users
+  for each row execute function public.proteger_asignacion_tienda_admin();

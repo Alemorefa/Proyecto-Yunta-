@@ -41,14 +41,21 @@ export async function POST(req: NextRequest) {
 
   const { data: perfilQuienLlama, error: errorPerfil } = await admin
     .from("users")
-    .select("role_id")
+    .select("role_id, super_admin")
     .eq("id", quienLlama.user.id)
     .single();
   if (errorPerfil || perfilQuienLlama?.role_id !== "admin") {
     return NextResponse.json({ error: "Solo un administrador puede dar de alta usuarios" }, { status: 403 });
   }
 
-  let body: { email?: string; nombre?: string; telefono?: string; role_id?: string; contrasena?: string };
+  let body: {
+    email?: string;
+    nombre?: string;
+    telefono?: string;
+    role_id?: string;
+    contrasena?: string;
+    store_id?: string | null;
+  };
   try {
     body = await req.json();
   } catch {
@@ -60,12 +67,22 @@ export async function POST(req: NextRequest) {
   const telefono = (body.telefono || "").trim();
   const contrasena = body.contrasena || "";
   const roleId = body.role_id === "admin" ? "admin" : "usuario";
+  const storeId = body.store_id || null;
 
   if (!email || !nombre) {
     return NextResponse.json({ error: "Nombre y email son obligatorios" }, { status: 400 });
   }
   if (contrasena.length < 6) {
     return NextResponse.json({ error: "La contraseña necesita al menos 6 caracteres" }, { status: 400 });
+  }
+  // Limitar a un admin a una sola tienda cambia su alcance — igual que para
+  // reasignar la tienda de un admin ya existente, solo lo puede hacer el
+  // super admin.
+  if (roleId === "admin" && storeId && !perfilQuienLlama?.super_admin) {
+    return NextResponse.json(
+      { error: "Solo el super admin puede crear un administrador limitado a una tienda" },
+      { status: 403 }
+    );
   }
 
   const { data: creado, error: errorCrear } = await admin.auth.admin.createUser({
@@ -83,9 +100,12 @@ export async function POST(req: NextRequest) {
   }
 
   // El trigger handle_new_user ya creó la fila en public.users con nombre y
-  // rol "usuario" por defecto — acá ajustamos teléfono y el rol elegido.
+  // rol "usuario" por defecto — acá ajustamos teléfono, rol y tienda.
   if (creado.user) {
-    await admin.from("users").update({ telefono: telefono || null, role_id: roleId }).eq("id", creado.user.id);
+    await admin
+      .from("users")
+      .update({ telefono: telefono || null, role_id: roleId, store_id: storeId })
+      .eq("id", creado.user.id);
   }
 
   return NextResponse.json({ ok: true });

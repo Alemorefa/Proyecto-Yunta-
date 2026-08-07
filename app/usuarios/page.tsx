@@ -16,20 +16,39 @@ import {
   listarUsuarios,
   actualizarUsuario,
   cambiarEstadoUsuario,
+  cambiarSuperAdmin,
   crearUsuario,
   eliminarUsuario,
   type UsuarioReal,
 } from "@/lib/usuarios-data";
+import { listarTiendas, type Tienda } from "@/lib/catalogos";
 import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
 
-const CREAR_VACIO = { email: "", nombre: "", telefono: "", role_id: "usuario" as RolUsuario, contrasena: "" };
+const CREAR_VACIO = {
+  email: "",
+  nombre: "",
+  telefono: "",
+  role_id: "usuario" as RolUsuario,
+  contrasena: "",
+  store_id: null as string | null,
+};
+
+// "" en el <Select> representa "todas las tiendas" (store_id null) — los
+// componentes de shadcn/Radix no dejan usar value="" en un SelectItem.
+const SIN_TIENDA = "__todas__";
 
 export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<UsuarioReal[] | null>(null);
+  const [tiendas, setTiendas] = useState<Tienda[]>([]);
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ nombre: "", telefono: "", role_id: "usuario" as RolUsuario });
+  const [form, setForm] = useState({
+    nombre: "",
+    telefono: "",
+    role_id: "usuario" as RolUsuario,
+    store_id: null as string | null,
+  });
   const [busqueda, setBusqueda] = useState("");
   const [guardando, setGuardando] = useState(false);
 
@@ -42,8 +61,9 @@ export default function UsuariosPage() {
   const sesion = useSesionDisplay();
 
   async function cargar() {
-    const u = await listarUsuarios();
+    const [u, t] = await Promise.all([listarUsuarios(), listarTiendas()]);
     setUsuarios(u);
+    setTiendas(t);
   }
 
   useEffect(() => {
@@ -53,6 +73,18 @@ export default function UsuariosPage() {
   if (!usuarios) return null;
 
   const yoSoySuperAdmin = usuarios.find((u) => u.id === sesion.usuarioId)?.super_admin ?? false;
+
+  function nombreTienda(storeId: string | null) {
+    if (!storeId) return "Todas las tiendas";
+    return tiendas.find((t) => t.id === storeId)?.nombre ?? "Tienda eliminada";
+  }
+
+  // Asignar/cambiar la tienda de un admin cambia su alcance — solo el super
+  // admin puede tocar ese campo cuando el rol elegido es "admin". Para un
+  // "usuario" lo puede tocar cualquier admin, como el resto de sus datos.
+  function puedeAsignarTienda(rol: RolUsuario) {
+    return rol === "usuario" || yoSoySuperAdmin;
+  }
 
   const q = busqueda.trim().toLowerCase();
   const usuariosFiltrados = q
@@ -65,7 +97,7 @@ export default function UsuariosPage() {
 
   function abrirEditar(u: UsuarioReal) {
     setEditId(u.id);
-    setForm({ nombre: u.nombre, telefono: u.telefono || "", role_id: u.role_id });
+    setForm({ nombre: u.nombre, telefono: u.telefono || "", role_id: u.role_id, store_id: u.store_id });
     setOpen(true);
   }
 
@@ -89,6 +121,25 @@ export default function UsuariosPage() {
       toast.error("No se pudo guardar: " + (err as Error).message);
     } finally {
       setGuardando(false);
+    }
+  }
+
+  // Nombrar o sacarle el super admin a otra cuenta. Solo visible/usable por
+  // quien ya es super admin (la base también lo exige, esto es nada más
+  // para no ofrecer un botón que va a fallar).
+  async function toggleSuperAdmin(u: UsuarioReal) {
+    if (u.id === sesion.usuarioId) {
+      toast.error("No podés cambiarte el super admin a vos mismo desde acá");
+      return;
+    }
+    const accion = u.super_admin ? "sacarle el super admin a" : "nombrar super admin a";
+    if (!confirm(`¿Seguro que querés ${accion} ${u.nombre}?`)) return;
+    try {
+      await cambiarSuperAdmin(u.id, !u.super_admin);
+      await cargar();
+      toast.success(u.super_admin ? "Ya no es super admin" : "Ahora es super admin");
+    } catch (err) {
+      toast.error("No se pudo cambiar: " + (err as Error).message);
     }
   }
 
@@ -197,6 +248,7 @@ export default function UsuariosPage() {
                 <TableHead>Nombre</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Rol</TableHead>
+                <TableHead>Tienda</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Acciones</TableHead>
               </TableRow>
@@ -204,7 +256,7 @@ export default function UsuariosPage() {
             <TableBody>
               {usuariosFiltrados.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
                     {busqueda ? "Sin resultados" : "No hay usuarios registrados"}
                   </TableCell>
                 </TableRow>
@@ -228,6 +280,7 @@ export default function UsuariosPage() {
                         {u.role_id === "admin" ? "Administrador" : "Usuario"}
                       </Badge>
                     </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{nombreTienda(u.store_id)}</TableCell>
                     <TableCell>
                       <Badge variant={u.activo ? "success" : "destructive"}>
                         {u.activo ? "Activo" : "Inactivo"}
@@ -242,6 +295,16 @@ export default function UsuariosPage() {
                           <Button size="icon" variant="ghost" onClick={() => toggleActivo(u)}>
                             <Power className="h-4 w-4" />
                           </Button>
+                          {yoSoySuperAdmin && u.id !== sesion.usuarioId && u.role_id === "admin" && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title={u.super_admin ? "Sacarle el super admin" : "Nombrar super admin"}
+                              onClick={() => toggleSuperAdmin(u)}
+                            >
+                              <ShieldCheck className={u.super_admin ? "h-4 w-4 text-blue-500" : "h-4 w-4"} />
+                            </Button>
+                          )}
                           {yoSoySuperAdmin && u.id !== sesion.usuarioId && (
                             <Button
                               size="icon"
@@ -290,6 +353,27 @@ export default function UsuariosPage() {
                   <SelectItem value="admin">Administrador</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label>Tienda asignada</Label>
+              <Select
+                value={form.store_id ?? SIN_TIENDA}
+                onValueChange={(v) => setForm({ ...form, store_id: v === SIN_TIENDA ? null : v })}
+                disabled={!puedeAsignarTienda(form.role_id)}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={SIN_TIENDA}>Todas las tiendas</SelectItem>
+                  {tiendas.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {form.role_id === "admin" && !yoSoySuperAdmin
+                  ? "Solo el super admin puede asignarle una tienda a un administrador."
+                  : "Si le asignás una tienda, esta cuenta solo va a ver el inventario y los movimientos de ese lugar."}
+              </p>
             </div>
           </div>
           <DialogFooter>
@@ -340,6 +424,27 @@ export default function UsuariosPage() {
                   <SelectItem value="admin">Administrador</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label>Tienda asignada</Label>
+              <Select
+                value={formCrear.store_id ?? SIN_TIENDA}
+                onValueChange={(v) => setFormCrear({ ...formCrear, store_id: v === SIN_TIENDA ? null : v })}
+                disabled={!puedeAsignarTienda(formCrear.role_id)}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={SIN_TIENDA}>Todas las tiendas</SelectItem>
+                  {tiendas.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {formCrear.role_id === "admin" && !yoSoySuperAdmin
+                  ? "Solo el super admin puede crear un administrador limitado a una tienda."
+                  : "Si le asignás una tienda, esta cuenta solo va a ver el inventario y los movimientos de ese lugar."}
+              </p>
             </div>
             <div>
               <Label>Contraseña inicial</Label>
