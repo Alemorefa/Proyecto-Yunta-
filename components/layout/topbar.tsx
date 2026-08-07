@@ -131,13 +131,6 @@ export function Topbar({
           Conectado
         </span>
 
-        <button
-          className="relative shrink-0 rounded-full p-2 text-muted-foreground hover:bg-muted"
-          aria-label="Notificaciones"
-        >
-          <Bell className="h-5 w-5" />
-        </button>
-
         {/* Avatar + menú de usuario */}
         <div ref={menuRef} className="relative shrink-0 border-l pl-2 sm:pl-4">
           <button
@@ -157,15 +150,6 @@ export function Topbar({
 
           {menuAbierto && (
             <div className="absolute right-0 top-12 z-50 w-56 rounded-lg border bg-card p-1 shadow-lg">
-              <button
-                onClick={() => {
-                  setMenuAbierto(false);
-                  router.push("/configuracion");
-                }}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
-              >
-                <User className="h-4 w-4" /> Perfil
-              </button>
 
               <button
                 onClick={() => {

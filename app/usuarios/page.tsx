@@ -266,13 +266,25 @@ export default function UsuariosPage() {
                 return (
                   <TableRow key={u.id}>
                     <TableCell>
-                      {u.nombre}
-                      {u.id === sesion.usuarioId && <span className="ml-1 text-xs text-muted-foreground">(vos)</span>}
-                      {u.super_admin && (
-                        <Badge variant="info" className="ml-2 gap-1">
-                          <ShieldCheck className="h-3 w-3" /> Super Admin
-                        </Badge>
-                      )}
+                      <div className="flex items-center gap-2.5">
+                        <div className="hidden h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--navy-800)] text-xs font-semibold text-white sm:flex">
+                          {u.avatar_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={u.avatar_url} alt={u.nombre} className="h-full w-full object-cover" />
+                          ) : (
+                            u.nombre.trim().charAt(0).toUpperCase() || "?"
+                          )}
+                        </div>
+                        <div>
+                          {u.nombre}
+                          {u.id === sesion.usuarioId && <span className="ml-1 text-xs text-muted-foreground">(vos)</span>}
+                          {u.super_admin && (
+                            <Badge variant="info" className="ml-2 gap-1">
+                              <ShieldCheck className="h-3 w-3" /> Super Admin
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell>{u.email}</TableCell>
                     <TableCell>

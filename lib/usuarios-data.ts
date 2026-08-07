@@ -17,6 +17,7 @@ export type UsuarioReal = {
   role_id: RolUsuario;
   activo: boolean;
   super_admin: boolean;
+  avatar_url?: string | null;
   // Tienda a la que queda limitada esta cuenta (null = ve todas). Solo
   // aplica de verdad si role_id es "usuario", o si es "admin" y alguien
   // (el super admin) se la asignó a propósito.
