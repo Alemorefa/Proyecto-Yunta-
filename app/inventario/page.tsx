@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeftRight, ChevronDown, Download, Pencil, Plus, Printer, QrCode, Trash2, Upload } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, Download, MoreVertical, Pencil, Plus, Printer, QrCode, Trash2, Upload, ZoomIn } from "lucide-react";
 import { EscanerQR } from "@/components/inventario/escaner-qr";
 import { idGen, ESTADOS_ACTIVO, type EstadoActivo } from "@/lib/db";
 import {
@@ -131,6 +131,8 @@ function InventarioContenido() {
   const [motivoBaja, setMotivoBaja] = useState("");
 
   const [qrActivo, setQrActivo] = useState<Activo | null>(null);
+  const [fotoZoom, setFotoZoom] = useState<{ url: string; titulo: string } | null>(null);
+  const [accionesMenuId, setAccionesMenuId] = useState<string | null>(null);
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
 
   function toggleExpandido(id: string) {
@@ -652,21 +654,21 @@ function InventarioContenido() {
       </div>
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto max-w-full">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-8 nav:hidden"></TableHead>
-                <TableHead className="hidden nav:table-cell"></TableHead>
-                <TableHead>Descripción</TableHead>
-                <TableHead>Categoría</TableHead>
-                <TableHead className="hidden nav:table-cell">Tienda / Sector</TableHead>
-                <TableHead className="hidden nav:table-cell">Cant.</TableHead>
-                <TableHead className="hidden nav:table-cell">Precio unit.</TableHead>
-                <TableHead className="hidden nav:table-cell">Total</TableHead>
-                <TableHead className="hidden nav:table-cell">Estado</TableHead>
-                <TableHead className="hidden nav:table-cell">QR</TableHead>
-                {esAdmin && <TableHead>Acciones</TableHead>}
+                <TableHead className="w-8 p-1 sm:p-2 nav:hidden"></TableHead>
+                <TableHead className="hidden nav:table-cell w-12 p-2"></TableHead>
+                <TableHead className="p-2">Descripción</TableHead>
+                <TableHead className="p-2">Categoría</TableHead>
+                <TableHead className="hidden nav:table-cell p-2">Tienda / Sector</TableHead>
+                <TableHead className="hidden nav:table-cell p-2">Cant.</TableHead>
+                <TableHead className="hidden nav:table-cell p-2">Precio unit.</TableHead>
+                <TableHead className="hidden nav:table-cell p-2">Total</TableHead>
+                <TableHead className="hidden nav:table-cell p-2">Estado</TableHead>
+                <TableHead className="hidden nav:table-cell p-2">QR</TableHead>
+                {esAdmin && <TableHead className="w-10 text-right p-1 sm:p-2">Acciones</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -681,13 +683,13 @@ function InventarioContenido() {
                 const expandido = expandidos.has(a.id);
                 return (
                   <Fragment key={a.id}>
-                    <TableRow>
-                      <TableCell className="nav:hidden">
-                        <Button size="icon" variant="ghost" onClick={() => toggleExpandido(a.id)}>
+                    <TableRow className={expandido ? "bg-accent/30 dark:bg-zinc-800/50 border-l-4 border-l-primary shadow-sm" : ""}>
+                      <TableCell className="w-8 p-1 sm:p-2 nav:hidden">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => toggleExpandido(a.id)}>
                           <ChevronDown className={`h-4 w-4 transition-transform ${expandido ? "rotate-180" : ""}`} />
                         </Button>
                       </TableCell>
-                      <TableCell className="hidden nav:table-cell">
+                      <TableCell className="hidden nav:table-cell w-12 p-2">
                         {fotos.get(a.id) ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={fotos.get(a.id)} alt={a.nombre} className="h-9 w-9 rounded-md object-cover" />
@@ -695,91 +697,178 @@ function InventarioContenido() {
                           <div className="h-9 w-9 rounded-md bg-muted" />
                         )}
                       </TableCell>
-                      <TableCell>
-                        {a.nombre}
+                      <TableCell className="p-2 max-w-[130px] sm:max-w-[220px] truncate">
+                        <span className="font-medium text-xs sm:text-sm truncate block" title={a.nombre}>
+                          {a.nombre}
+                        </span>
                         {a.codigo_interno && (
-                          <span className="ml-2 font-mono text-xs text-muted-foreground">{a.codigo_interno}</span>
+                          <span className="font-mono text-[10px] text-muted-foreground block truncate">{a.codigo_interno}</span>
                         )}
                       </TableCell>
-                      <TableCell>{nombreCategoria(a.category_id)}</TableCell>
-                      <TableCell className="hidden nav:table-cell">
+                      <TableCell className="p-2 max-w-[95px] sm:max-w-[140px] truncate">
+                        <Badge variant="outline" className="px-1.5 py-0.5 text-[10px] font-normal border-muted-foreground/30 truncate max-w-full inline-block">
+                          {nombreCategoria(a.category_id)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden nav:table-cell p-2">
                         {nombreTienda(a.store_id)} <span className="text-muted-foreground">/ {nombreSector(a.sector_id)}</span>
                       </TableCell>
-                      <TableCell className="hidden nav:table-cell">{a.cantidad ?? 1}</TableCell>
-                      <TableCell className="hidden text-xs nav:table-cell">
+                      <TableCell className="hidden nav:table-cell p-2">{a.cantidad ?? 1}</TableCell>
+                      <TableCell className="hidden text-xs nav:table-cell p-2">
                         {a.precio_ars ? `$ ${a.precio_ars.toLocaleString("es-AR")}` : ""}
                         {a.precio_ars && a.precio_usd ? " / " : ""}
                         {a.precio_usd ? `US$ ${a.precio_usd.toLocaleString("es-AR")}` : ""}
                       </TableCell>
-                      <TableCell className="hidden text-xs font-medium nav:table-cell">
+                      <TableCell className="hidden text-xs font-medium nav:table-cell p-2">
                         {a.precio_ars ? `$ ${valorTotalARS(a).toLocaleString("es-AR")}` : ""}
                         {a.precio_ars && a.precio_usd ? " / " : ""}
                         {a.precio_usd ? `US$ ${valorTotalUSD(a).toLocaleString("es-AR")}` : ""}
                       </TableCell>
-                      <TableCell className="hidden nav:table-cell">
+                      <TableCell className="hidden nav:table-cell p-2">
                         <Badge variant={badgeEstado(a.estado)}>{a.estado}</Badge>
                       </TableCell>
-                      <TableCell className="hidden nav:table-cell">
-                        <Button size="icon" variant="ghost" onClick={() => setQrActivo(a)}>
+                      <TableCell className="hidden nav:table-cell p-2">
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setQrActivo(a)}>
                           <QrCode className="h-4 w-4" />
                         </Button>
                       </TableCell>
                       {esAdmin && (
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <Button size="icon" variant="ghost" onClick={() => abrirEditar(a)}>
+                        <TableCell className="w-10 text-right p-1 sm:p-2">
+                          <div className="hidden lg:flex gap-1 justify-end">
+                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => abrirEditar(a)} title="Editar">
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button size="icon" variant="ghost" onClick={() => abrirTransferencia(a)}>
+                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => abrirTransferencia(a)} title="Transferir">
                               <ArrowLeftRight className="h-4 w-4" />
                             </Button>
                             <Button
                               size="icon"
                               variant="ghost"
+                              className="h-8 w-8"
                               disabled={a.estado === "Baja"}
                               onClick={() => abrirBaja(a)}
+                              title="Dar de baja"
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
+                          </div>
+                          <div className="relative lg:hidden inline-block text-left">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8"
+                              onClick={() => setAccionesMenuId(accionesMenuId === a.id ? null : a.id)}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                            {accionesMenuId === a.id && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-40"
+                                  onClick={() => setAccionesMenuId(null)}
+                                />
+                                <div className="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-md border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-xl opacity-100 p-1 text-xs">
+                                  <button
+                                    className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 hover:bg-zinc-800 text-left transition-colors"
+                                    onClick={() => {
+                                      setAccionesMenuId(null);
+                                      abrirEditar(a);
+                                    }}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5 text-zinc-400" />
+                                    <span>Editar</span>
+                                  </button>
+                                  <button
+                                    className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 hover:bg-zinc-800 text-left transition-colors"
+                                    onClick={() => {
+                                      setAccionesMenuId(null);
+                                      abrirTransferencia(a);
+                                    }}
+                                  >
+                                    <ArrowLeftRight className="h-3.5 w-3.5 text-zinc-400" />
+                                    <span>Transferir</span>
+                                  </button>
+                                  <button
+                                    className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 hover:bg-zinc-800 text-left disabled:opacity-50 text-red-400 hover:text-red-300 transition-colors"
+                                    disabled={a.estado === "Baja"}
+                                    onClick={() => {
+                                      setAccionesMenuId(null);
+                                      abrirBaja(a);
+                                    }}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    <span>Dar de baja</span>
+                                  </button>
+                                </div>
+                              </>
+                            )}
                           </div>
                         </TableCell>
                       )}
                     </TableRow>
                     {expandido && (
-                      <TableRow className="nav:hidden">
-                        <TableCell colSpan={esAdmin ? 4 : 3} className="bg-muted/30">
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-2 py-1 text-xs">
-                            <div>
-                              <span className="text-muted-foreground">Tienda/Sector: </span>
-                              {nombreTienda(a.store_id)} / {nombreSector(a.sector_id)}
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Cantidad: </span>
-                              {a.cantidad ?? 1}
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Precio unit.: </span>
-                              {a.precio_ars ? `$ ${a.precio_ars.toLocaleString("es-AR")}` : ""}
-                              {a.precio_ars && a.precio_usd ? " / " : ""}
-                              {a.precio_usd ? `US$ ${a.precio_usd.toLocaleString("es-AR")}` : ""}
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Total: </span>
-                              {a.precio_ars ? `$ ${valorTotalARS(a).toLocaleString("es-AR")}` : ""}
-                              {a.precio_ars && a.precio_usd ? " / " : ""}
-                              {a.precio_usd ? `US$ ${valorTotalUSD(a).toLocaleString("es-AR")}` : ""}
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Estado: </span>
-                              <Badge variant={badgeEstado(a.estado)}>{a.estado}</Badge>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-muted-foreground">QR: </span>
-                              <Button size="icon" variant="ghost" onClick={() => setQrActivo(a)}>
-                                <QrCode className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
+                      <TableRow className={`nav:hidden transition-all duration-200 ease-in-out ${expandido ? "bg-accent/30 dark:bg-zinc-800/50 border-l-4 border-l-primary" : ""}`}>
+                        <TableCell colSpan={esAdmin ? 4 : 3} className="bg-muted/30 p-3 max-w-full overflow-hidden">
+                          {(() => {
+                            const fotoUrl = fotos.get(a.id);
+                            return (
+                              <div className="flex flex-row items-start justify-between gap-3 w-full max-w-full overflow-hidden">
+                                {/* Bloque de datos textuales a la IZQUIERDA */}
+                                <div className="flex-1 min-w-0 grid grid-cols-2 gap-x-3 gap-y-2 text-xs break-words whitespace-normal">
+                                  <div className="col-span-2 min-w-0 break-words whitespace-normal">
+                                    <span className="text-muted-foreground font-medium">Tienda/Sector: </span>
+                                    <span className="break-words">{nombreTienda(a.store_id)} / {nombreSector(a.sector_id)}</span>
+                                  </div>
+                                  <div className="min-w-0 break-words">
+                                    <span className="text-muted-foreground font-medium">Cantidad: </span>
+                                    {a.cantidad ?? 1}
+                                  </div>
+                                  <div className="min-w-0 break-words">
+                                    <span className="text-muted-foreground font-medium">Precio unit.: </span>
+                                    {a.precio_ars ? `$ ${a.precio_ars.toLocaleString("es-AR")}` : ""}
+                                    {a.precio_ars && a.precio_usd ? " / " : ""}
+                                    {a.precio_usd ? `US$ ${a.precio_usd.toLocaleString("es-AR")}` : ""}
+                                  </div>
+                                  <div className="min-w-0 break-words">
+                                    <span className="text-muted-foreground font-medium">Total: </span>
+                                    {a.precio_ars ? `$ ${valorTotalARS(a).toLocaleString("es-AR")}` : ""}
+                                    {a.precio_ars && a.precio_usd ? " / " : ""}
+                                    {a.precio_usd ? `US$ ${valorTotalUSD(a).toLocaleString("es-AR")}` : ""}
+                                  </div>
+                                  <div className="min-w-0 break-words">
+                                    <span className="text-muted-foreground font-medium">Estado: </span>
+                                    <Badge variant={badgeEstado(a.estado)}>{a.estado}</Badge>
+                                  </div>
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-muted-foreground font-medium">QR: </span>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setQrActivo(a)}>
+                                      <QrCode className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                {/* Foto a la DERECHA */}
+                                {fotoUrl && (
+                                  <div
+                                    className="relative group shrink-0 cursor-pointer rounded-lg overflow-hidden border bg-background shadow-sm hover:opacity-90 transition-opacity"
+                                    onClick={() => setFotoZoom({ url: fotoUrl, titulo: a.nombre })}
+                                    title="Tocar para ampliar imagen"
+                                  >
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={fotoUrl}
+                                      alt={a.nombre}
+                                      loading="lazy"
+                                      className="h-20 w-20 sm:h-24 sm:w-24 object-cover rounded-md"
+                                    />
+                                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                                      <ZoomIn className="h-5 w-5 drop-shadow" />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </TableCell>
                       </TableRow>
                     )}
@@ -1091,6 +1180,30 @@ function InventarioContenido() {
             <Button variant="secondary" onClick={() => setImportOpen(false)}>Cancelar</Button>
             <Button onClick={confirmarImportacion} disabled={importando}>
               {importando ? "Importando..." : "Confirmar importación"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de foto en alta resolución / zoom */}
+      <Dialog open={!!fotoZoom} onOpenChange={(v) => !v && setFotoZoom(null)}>
+        <DialogContent className="max-w-md p-4">
+          <DialogHeader>
+            <DialogTitle className="truncate">{fotoZoom?.titulo}</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center justify-center py-2 bg-black/5 rounded-md overflow-hidden">
+            {fotoZoom?.url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={fotoZoom.url}
+                alt={fotoZoom.titulo}
+                className="max-h-[70vh] w-auto max-w-full object-contain rounded-md shadow-md"
+              />
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setFotoZoom(null)}>
+              Cerrar
             </Button>
           </DialogFooter>
         </DialogContent>
