@@ -11,6 +11,7 @@ export type Impresora = {
   modelo: string;
   store_id: string;
   observaciones: string | null;
+  activa: boolean;
   fecha_creacion: string;
 };
 
@@ -64,5 +65,22 @@ export async function registrarMovimientoImpresora(input: MovimientoImpresoraInp
     observacion: input.observacion.trim() || null,
     usuario_id: input.usuario_id,
   });
+  if (error) throw error;
+}
+
+// Dar de baja / reactivar una impresora. Solo cambia el flag "activa" — no
+// toca ni borra los movimientos ya registrados (quedan intactos en el
+// historial, tal cual se cargaron).
+export async function cambiarEstadoImpresora(id: string, activa: boolean): Promise<void> {
+  const { error } = await supabase.from("printers").update({ activa }).eq("id", id);
+  if (error) throw error;
+}
+
+// Mueve una impresora a otra tienda. Los movimientos anteriores no se
+// tocan: siguen apuntando a la misma impresora, y la tienda que muestran en
+// el historial se resuelve con la tienda ACTUAL de la impresora al momento
+// de mostrarlos (igual que antes de este cambio).
+export async function moverImpresoraDeTienda(id: string, storeId: string): Promise<void> {
+  const { error } = await supabase.from("printers").update({ store_id: storeId }).eq("id", id);
   if (error) throw error;
 }

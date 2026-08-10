@@ -118,7 +118,18 @@ export type ConfigNegocio = {
 // columna calculada que dice cuántos días pasaron desde el movimiento
 // anterior de esa misma impresora.
 
-export type TipoMovimientoImpresora = "Compra" | "Compra Económica" | "Recarga" | "Reset" | "Otro";
+// "Transferencia" y "Baja" no son elegibles a mano en "Registrar movimiento"
+// (ver TIPOS_MOVIMIENTO_IMPRESORA más abajo) — se generan solos cuando se
+// mueve una impresora de tienda o se le da de baja, para que quede el
+// registro en el historial.
+export type TipoMovimientoImpresora =
+  | "Compra"
+  | "Compra Económica"
+  | "Recarga"
+  | "Reset"
+  | "Otro"
+  | "Transferencia"
+  | "Baja";
 
 export const TIPOS_MOVIMIENTO_IMPRESORA: TipoMovimientoImpresora[] = [
   "Compra",

@@ -18,6 +18,8 @@ import {
   crearImpresora,
   listarMovimientosImpresora,
   registrarMovimientoImpresora,
+  cambiarEstadoImpresora,
+  moverImpresoraDeTienda,
   type Impresora,
   type MovimientoImpresora,
 } from "@/lib/impresoras-data";
@@ -26,10 +28,12 @@ import { useSesionDisplay } from "@/lib/session";
 import { exportarExcel } from "@/lib/excel";
 
 function badgeTipo(tipo: TipoMovimientoImpresora) {
+  if (tipo === "Baja") return "destructive";
   if (tipo === "Compra Económica") return "destructive";
   if (tipo === "Compra") return "warning";
   if (tipo === "Reset") return "success";
   if (tipo === "Recarga") return "info";
+  if (tipo === "Transferencia") return "secondary";
   return "secondary";
 }
 
@@ -70,6 +74,13 @@ export default function ImpresorasPage() {
   const [observacion, setObservacion] = useState("");
   const [guardandoMov, setGuardandoMov] = useState(false);
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+
+  const [bajaImpresora, setBajaImpresora] = useState<Impresora | null>(null);
+  const [guardandoBaja, setGuardandoBaja] = useState(false);
+
+  const [moverImpresora, setMoverImpresora] = useState<Impresora | null>(null);
+  const [tiendaDestinoMover, setTiendaDestinoMover] = useState("");
+  const [guardandoMover, setGuardandoMover] = useState(false);
 
   function toggleExpandido(id: string) {
     setExpandidos((prev) => {
@@ -161,7 +172,7 @@ export default function ImpresorasPage() {
     if (impActual && impActual.store_id !== id) setImpresoraId("");
   }
 
-  const impresorasDeLaTiendaMov = impresoras.filter((i) => i.store_id === tiendaMov);
+  const impresorasDeLaTiendaMov = impresoras.filter((i) => i.store_id === tiendaMov && i.activa);
 
   async function guardarMovimiento() {
     if (!impresoraId) {
@@ -184,6 +195,69 @@ export default function ImpresorasPage() {
       toast.error("No se pudo registrar el movimiento: " + (err as Error).message);
     } finally {
       setGuardandoMov(false);
+    }
+  }
+
+  function abrirBajaImpresora(imp: Impresora) {
+    setBajaImpresora(imp);
+  }
+
+  async function confirmarBajaImpresora() {
+    if (!bajaImpresora) return;
+    const reactivando = !bajaImpresora.activa;
+    setGuardandoBaja(true);
+    try {
+      await cambiarEstadoImpresora(bajaImpresora.id, reactivando);
+      // El historial de movimientos anteriores no se toca — solo se agrega
+      // una entrada nueva dejando constancia de la baja/reactivación.
+      await registrarMovimientoImpresora({
+        printer_id: bajaImpresora.id,
+        fecha: hoyISO(),
+        tipo: reactivando ? "Otro" : "Baja",
+        observacion: reactivando ? "Impresora reactivada" : "Impresora dada de baja",
+        usuario_id: sesion.usuarioId ?? null,
+      });
+      await cargar();
+      setBajaImpresora(null);
+      toast.success(reactivando ? "Impresora reactivada" : "Impresora dada de baja");
+    } catch (err) {
+      toast.error("No se pudo actualizar la impresora: " + (err as Error).message);
+    } finally {
+      setGuardandoBaja(false);
+    }
+  }
+
+  function abrirMoverImpresora(imp: Impresora) {
+    setMoverImpresora(imp);
+    setTiendaDestinoMover(imp.store_id);
+  }
+
+  async function confirmarMoverImpresora() {
+    if (!moverImpresora || !tiendaDestinoMover) return;
+    if (tiendaDestinoMover === moverImpresora.store_id) {
+      toast.error("Elegí una tienda distinta a la actual");
+      return;
+    }
+    const tiendaOrigenId = moverImpresora.store_id;
+    setGuardandoMover(true);
+    try {
+      await moverImpresoraDeTienda(moverImpresora.id, tiendaDestinoMover);
+      // Igual que con la baja: los movimientos previos quedan tal cual,
+      // solo se agrega uno nuevo con el traslado.
+      await registrarMovimientoImpresora({
+        printer_id: moverImpresora.id,
+        fecha: hoyISO(),
+        tipo: "Transferencia",
+        observacion: `De ${nombreTienda(tiendaOrigenId)} a ${nombreTienda(tiendaDestinoMover)}`,
+        usuario_id: sesion.usuarioId ?? null,
+      });
+      await cargar();
+      setMoverImpresora(null);
+      toast.success("Impresora movida de tienda");
+    } catch (err) {
+      toast.error("No se pudo mover la impresora: " + (err as Error).message);
+    } finally {
+      setGuardandoMover(false);
     }
   }
 
@@ -245,6 +319,51 @@ export default function ImpresorasPage() {
           </SelectContent>
         </Select>
       </div>
+
+      {esAdmin && (
+        <Card className="mb-4">
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Impresora</TableHead>
+                  <TableHead className="hidden nav:table-cell">Tienda</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {impresorasFiltradas.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      No hay impresoras cargadas
+                    </TableCell>
+                  </TableRow>
+                )}
+                {impresorasFiltradas.map((i) => (
+                  <TableRow key={i.id}>
+                    <TableCell>{i.modelo}</TableCell>
+                    <TableCell className="hidden nav:table-cell">{nombreTienda(i.store_id)}</TableCell>
+                    <TableCell>
+                      <Badge variant={i.activa ? "success" : "destructive"}>{i.activa ? "Activa" : "Baja"}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        <Button size="sm" variant="ghost" disabled={!i.activa} onClick={() => abrirMoverImpresora(i)}>
+                          Mover
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => abrirBajaImpresora(i)}>
+                          {i.activa ? "Dar de baja" : "Reactivar"}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-0">
@@ -434,6 +553,56 @@ export default function ImpresorasPage() {
             <Button variant="secondary" onClick={() => setOpenMov(false)}>Cancelar</Button>
             <Button onClick={guardarMovimiento} disabled={guardandoMov}>
               {guardandoMov ? "Guardando..." : "Guardar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dar de baja / reactivar impresora */}
+      <Dialog open={!!bajaImpresora} onOpenChange={(v) => !v && setBajaImpresora(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {bajaImpresora?.activa ? "Dar de baja" : "Reactivar"} &quot;{bajaImpresora?.modelo}&quot;
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {bajaImpresora?.activa
+              ? "Deja de estar disponible para elegir en \"Registrar movimiento\". El historial de movimientos que ya tiene no se modifica."
+              : "Vuelve a estar disponible para elegir en \"Registrar movimiento\"."}
+          </p>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setBajaImpresora(null)}>Cancelar</Button>
+            <Button
+              variant={bajaImpresora?.activa ? "destructive" : "default"}
+              onClick={confirmarBajaImpresora}
+              disabled={guardandoBaja}
+            >
+              {guardandoBaja ? "Guardando..." : bajaImpresora?.activa ? "Dar de baja" : "Reactivar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mover impresora de tienda */}
+      <Dialog open={!!moverImpresora} onOpenChange={(v) => !v && setMoverImpresora(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mover &quot;{moverImpresora?.modelo}&quot;</DialogTitle>
+          </DialogHeader>
+          <div>
+            <Label>Tienda destino</Label>
+            <Select value={tiendaDestinoMover} onValueChange={setTiendaDestinoMover}>
+              <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+              <SelectContent>
+                {tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setMoverImpresora(null)}>Cancelar</Button>
+            <Button onClick={confirmarMoverImpresora} disabled={guardandoMover}>
+              {guardandoMover ? "Guardando..." : "Confirmar"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -476,3 +476,16 @@ create policy "insertar_cotizacion" on public.exchange_rates for insert
 alter table public.users drop constraint if exists super_admin_implica_admin;
 alter table public.users add constraint super_admin_implica_admin
   check (not super_admin or role_id = 'admin');
+
+-- ============================================================================
+-- Impresoras: dar de baja y mover entre tiendas.
+-- "activa" permite retirar una impresora sin borrar su historial de
+-- movimientos. "Transferencia" y "Baja" se agregan como tipos de movimiento
+-- válidos para que esas acciones queden registradas en printer_movements
+-- (no se toca ni se reescribe ningún movimiento previo).
+-- ============================================================================
+alter table public.printers add column if not exists activa boolean not null default true;
+
+alter table public.printer_movements drop constraint if exists printer_movements_tipo_check;
+alter table public.printer_movements add constraint printer_movements_tipo_check
+  check (tipo in ('Compra', 'Compra Económica', 'Recarga', 'Reset', 'Otro', 'Transferencia', 'Baja'));
