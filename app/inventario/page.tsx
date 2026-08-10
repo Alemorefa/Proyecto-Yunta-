@@ -52,7 +52,6 @@ import {
   registrarMovimientoImpresora,
   type Impresora,
 } from "@/lib/impresoras-data";
-import Link from "next/link";
 
 type FilaImportada = {
   codigo_interno: string;
@@ -784,46 +783,6 @@ function InventarioContenido() {
         </Select>
       </div>
 
-      {impresorasEnInventario.length > 0 && (
-        <Card className="mb-4">
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Impresora</TableHead>
-                  <TableHead className="hidden nav:table-cell">Tienda</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {impresorasEnInventario.map((i) => (
-                  <TableRow key={i.id}>
-                    <TableCell>{i.modelo}</TableCell>
-                    <TableCell className="hidden nav:table-cell">{nombreTienda(i.store_id)}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap justify-end gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => abrirEditarImp(i)}>
-                          Editar
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => abrirMoverImp(i)}>
-                          Mover
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => abrirBajaImp(i)}>
-                          Dar de baja
-                        </Button>
-                        <Button asChild size="sm" variant="ghost">
-                          <Link href="/impresoras">Ver historial</Link>
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-
       <Card>
         <CardContent className="p-0 overflow-x-auto max-w-full">
           <Table>
@@ -843,13 +802,64 @@ function InventarioContenido() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {activosFiltrados.length === 0 && (
+              {activosFiltrados.length === 0 && impresorasEnInventario.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={esAdmin ? 11 : 10} className="text-center text-muted-foreground">
                     No hay ítems registrados
                   </TableCell>
                 </TableRow>
               )}
+              {impresorasEnInventario.map((i) => (
+                <TableRow key={`imp-${i.id}`}>
+                  <TableCell className="w-8 p-1 sm:p-2 nav:hidden"></TableCell>
+                  <TableCell className="hidden nav:table-cell w-12 p-2">
+                    <div className="h-9 w-9 rounded-md bg-muted flex items-center justify-center">
+                      <Printer className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </TableCell>
+                  <TableCell className="p-2 max-w-[130px] sm:max-w-[220px] truncate">
+                    <span className="font-medium text-xs sm:text-sm truncate block" title={i.modelo}>
+                      {i.modelo}
+                    </span>
+                  </TableCell>
+                  <TableCell className="p-2 max-w-[95px] sm:max-w-[140px] truncate">
+                    <Badge variant="outline" className="px-1.5 py-0.5 text-[10px] font-normal border-muted-foreground/30 truncate max-w-full inline-block">
+                      Impresora
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden nav:table-cell p-2">
+                    {nombreTienda(i.store_id)} <span className="text-muted-foreground">/ -</span>
+                  </TableCell>
+                  <TableCell className="hidden nav:table-cell p-2">1</TableCell>
+                  <TableCell className="hidden text-xs nav:table-cell p-2 text-muted-foreground">-</TableCell>
+                  <TableCell className="hidden text-xs font-medium nav:table-cell p-2 text-muted-foreground">-</TableCell>
+                  <TableCell className="hidden nav:table-cell p-2">
+                    <Badge variant={i.activa ? "success" : "destructive"}>{i.activa ? "Activa" : "Baja"}</Badge>
+                  </TableCell>
+                  <TableCell className="hidden nav:table-cell p-2 text-muted-foreground">-</TableCell>
+                  {esAdmin && (
+                    <TableCell className="w-10 text-right p-1 sm:p-2">
+                      <div className="flex gap-1 justify-end">
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => abrirEditarImp(i)} title="Editar">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => abrirMoverImp(i)} title="Mover de tienda">
+                          <ArrowLeftRight className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          onClick={() => abrirBajaImp(i)}
+                          title={i.activa ? "Dar de baja" : "Reactivar"}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
               {activosVisibles.map((a) => {
                 const expandido = expandidos.has(a.id);
                 return (
