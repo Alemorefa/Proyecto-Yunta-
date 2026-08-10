@@ -52,6 +52,11 @@ import {
   registrarMovimientoImpresora,
   type Impresora,
 } from "@/lib/impresoras-data";
+import {
+  esCategoriaImpresora,
+  sincronizarImpresoraDesdeActivo,
+  sincronizarActivoDesdeImpresora,
+} from "@/lib/vinculo-impresoras";
 
 type FilaImportada = {
   codigo_interno: string;
@@ -354,11 +359,12 @@ function InventarioContenido() {
       };
 
       let assetId = editId;
+      let guardado: Activo | null = null;
 
       if (editId) {
         const anterior = activos?.find((a) => a.id === editId);
         const estadoCambio = anterior?.estado !== input.estado;
-        await actualizarActivo(editId, input);
+        guardado = await actualizarActivo(editId, input);
         await registrarMovimientoActivo({
           activo_id: editId,
           accion: estadoCambio ? "Cambio de estado" : "Modificación",
@@ -369,6 +375,7 @@ function InventarioContenido() {
       } else {
         const nuevo = await crearActivo(input);
         assetId = nuevo.id;
+        guardado = nuevo;
         await registrarMovimientoActivo({
           activo_id: nuevo.id,
           accion: "Alta",
@@ -379,6 +386,12 @@ function InventarioContenido() {
       }
 
       if (assetId) await reemplazarFotoActivo(assetId, form.foto_url || null);
+
+      // Si es de categoría "Impresoras", crea/actualiza la impresora
+      // vinculada en el módulo Impresoras para que quede igual.
+      if (guardado && esCategoriaImpresora(categorias, guardado.category_id)) {
+        await sincronizarImpresoraDesdeActivo(guardado);
+      }
 
       await cargar();
       setOpen(false);
@@ -415,6 +428,9 @@ function InventarioContenido() {
         sector_destino_id: nuevoSector || null,
         usuario_id: sesion.usuarioId ?? null,
       });
+      if (transferir.printer_id && origenTienda !== nuevaTienda) {
+        await moverImpresoraDeTienda(transferir.printer_id, nuevaTienda);
+      }
       await cargar();
       setTransferir(null);
       toast.success("Ítem transferido");
@@ -454,6 +470,9 @@ function InventarioContenido() {
           totalActual > 1 ? `${aDarDeBaja} de ${totalActual} unidad(es) — ${motivoBaja.trim()}` : motivoBaja.trim(),
         usuario_id: sesion.usuarioId ?? null,
       });
+      if (baja.printer_id && esBajaTotal) {
+        await cambiarEstadoImpresora(baja.printer_id, false);
+      }
       await cargar();
       setBaja(null);
       toast.success(esBajaTotal ? "Ítem dado de baja" : "Baja parcial registrada");
@@ -475,6 +494,7 @@ function InventarioContenido() {
     setGuardandoEditImp(true);
     try {
       await editarImpresora(editarImp.id, modeloEditImp);
+      await sincronizarActivoDesdeImpresora(editarImp, { modelo: modeloEditImp });
       await cargar();
       setEditarImp(null);
       toast.success("Impresora actualizada");
@@ -507,6 +527,7 @@ function InventarioContenido() {
         observacion: `De ${nombreTienda(tiendaOrigenId)} a ${nombreTienda(tiendaDestinoImp)}`,
         usuario_id: sesion.usuarioId ?? null,
       });
+      await sincronizarActivoDesdeImpresora(moverImp, { store_id: tiendaDestinoImp });
       await cargar();
       setMoverImp(null);
       toast.success("Impresora movida de tienda");
@@ -534,6 +555,7 @@ function InventarioContenido() {
         observacion: reactivando ? "Impresora reactivada" : "Impresora dada de baja",
         usuario_id: sesion.usuarioId ?? null,
       });
+      await sincronizarActivoDesdeImpresora(bajaImp, { activa: reactivando });
       await cargar();
       setBajaImp(null);
       toast.success(reactivando ? "Impresora reactivada" : "Impresora dada de baja");

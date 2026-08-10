@@ -30,6 +30,7 @@ export type Activo = {
   fecha_baja: string | null;
   motivo_baja: string | null;
   foto_url?: string | null;
+  printer_id: string | null;
 };
 
 export function valorTotalARS(a: Pick<Activo, "cantidad" | "precio_ars">) {
@@ -122,6 +123,27 @@ export async function actualizarActivo(id: string, input: ActivoInput): Promise<
   const { data, error } = await supabase.from("assets").update(payloadDe(input)).eq("id", id).select().single();
   if (error) throw error;
   return data as Activo;
+}
+
+// Busca el activo vinculado a una impresora (si tiene uno) — se usa desde
+// lib/vinculo-impresoras.ts para reflejar en Inventario los cambios que se
+// hacen del lado de Impresoras.
+export async function buscarActivoPorImpresora(printerId: string): Promise<Activo | null> {
+  const { data, error } = await supabase.from("assets").select("*").eq("printer_id", printerId).maybeSingle();
+  if (error) throw error;
+  return (data as Activo) ?? null;
+}
+
+// Actualiza solo los campos indicados de un activo (a diferencia de
+// actualizarActivo, que reemplaza el formulario completo) — se usa para
+// reflejar cambios que vienen del lado de la impresora vinculada, sin tocar
+// el resto de los datos del activo (descripción, precio, etc.).
+export async function sincronizarActivoVinculado(
+  id: string,
+  cambios: { store_id?: string; estado?: EstadoActivo; nombre?: string; modelo?: string }
+): Promise<void> {
+  const { error } = await supabase.from("assets").update(cambios).eq("id", id);
+  if (error) throw error;
 }
 
 export async function transferirActivo(

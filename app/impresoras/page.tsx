@@ -26,6 +26,7 @@ import {
 import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
 import { exportarExcel } from "@/lib/excel";
+import { sincronizarActivoDesdeImpresora, asegurarActivoParaImpresora } from "@/lib/vinculo-impresoras";
 
 function badgeTipo(tipo: TipoMovimientoImpresora) {
   if (tipo === "Baja") return "destructive";
@@ -140,7 +141,8 @@ export default function ImpresorasPage() {
     }
     setGuardandoImpresora(true);
     try {
-      await crearImpresora(modeloNuevo.trim(), tiendaNueva);
+      const nueva = await crearImpresora(modeloNuevo.trim(), tiendaNueva);
+      await asegurarActivoParaImpresora(nueva);
       await cargar();
       setModeloNuevo("");
       setTiendaNueva("");
@@ -217,6 +219,7 @@ export default function ImpresorasPage() {
         observacion: reactivando ? "Impresora reactivada" : "Impresora dada de baja",
         usuario_id: sesion.usuarioId ?? null,
       });
+      await sincronizarActivoDesdeImpresora(bajaImpresora, { activa: reactivando });
       await cargar();
       setBajaImpresora(null);
       toast.success(reactivando ? "Impresora reactivada" : "Impresora dada de baja");
@@ -251,6 +254,7 @@ export default function ImpresorasPage() {
         observacion: `De ${nombreTienda(tiendaOrigenId)} a ${nombreTienda(tiendaDestinoMover)}`,
         usuario_id: sesion.usuarioId ?? null,
       });
+      await sincronizarActivoDesdeImpresora(moverImpresora, { store_id: tiendaDestinoMover });
       await cargar();
       setMoverImpresora(null);
       toast.success("Impresora movida de tienda");

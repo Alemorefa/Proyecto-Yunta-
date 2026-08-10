@@ -19,6 +19,7 @@ import {
   registrarMovimientoActivo,
   type Activo,
 } from "@/lib/inventario-data";
+import { moverImpresoraDeTienda, cambiarEstadoImpresora } from "@/lib/impresoras-data";
 import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
 
@@ -112,6 +113,9 @@ function MovimientosContenido() {
           sector_destino_id: sectorDestino || null,
           usuario_id: sesion.usuarioId ?? null,
         });
+        if (activoSeleccionado.printer_id && origenTienda !== tiendaDestino) {
+          await moverImpresoraDeTienda(activoSeleccionado.printer_id, tiendaDestino);
+        }
         toast.success("Transferencia registrada");
       } else if (accion === "Cambio de estado") {
         await cambiarEstadoActivo(activoSeleccionado.id, estadoNuevo);
@@ -135,6 +139,9 @@ function MovimientosContenido() {
           observacion: observacion.trim(),
           usuario_id: sesion.usuarioId ?? null,
         });
+        if (activoSeleccionado.printer_id) {
+          await cambiarEstadoImpresora(activoSeleccionado.printer_id, false);
+        }
         toast.success("Activo dado de baja");
       }
 

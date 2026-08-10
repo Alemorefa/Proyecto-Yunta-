@@ -489,3 +489,47 @@ alter table public.printers add column if not exists activa boolean not null def
 alter table public.printer_movements drop constraint if exists printer_movements_tipo_check;
 alter table public.printer_movements add constraint printer_movements_tipo_check
   check (tipo in ('Compra', 'Compra Económica', 'Recarga', 'Reset', 'Otro', 'Transferencia', 'Baja'));
+
+-- ============================================================================
+-- Vínculo Impresoras <-> Inventario: cada impresora puede tener un activo
+-- asociado (mismo ítem, visto/editable desde los dos módulos). Se sincroniza
+-- desde el código de la app (lib/inventario-data.ts y lib/impresoras-data.ts)
+-- cada vez que se guarda un lado; acá solo se agrega el vínculo en sí.
+-- ============================================================================
+alter table public.assets add column if not exists printer_id uuid references public.printers(id) on delete set null;
+alter table public.assets drop constraint if exists assets_printer_id_unique;
+alter table public.assets add constraint assets_printer_id_unique unique (printer_id);
+
+-- Crea un activo por cada impresora que todavía no tenga uno vinculado, para
+-- que las que ya existían en Impresoras aparezcan también en Inventario.
+-- Seguro de correr de nuevo: solo toca impresoras sin activo vinculado.
+do $$
+declare
+  cat_id uuid;
+  p record;
+begin
+  select id into cat_id from public.categories where nombre = 'Impresoras' limit 1;
+  if cat_id is null then
+    insert into public.categories (nombre) values ('Impresoras') returning id into cat_id;
+  end if;
+
+  for p in
+    select * from public.printers
+    where id not in (select printer_id from public.assets where printer_id is not null)
+  loop
+    insert into public.assets (
+      codigo_interno, nombre, category_id, modelo, estado, cantidad,
+      store_id, observaciones, printer_id
+    ) values (
+      'IMP-' || substr(p.id::text, 1, 8),
+      p.modelo,
+      cat_id,
+      p.modelo,
+      case when p.activa then 'Bueno' else 'Baja' end,
+      1,
+      p.store_id,
+      p.observaciones,
+      p.id
+    );
+  end loop;
+end $$;
