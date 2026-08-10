@@ -68,6 +68,14 @@ export async function registrarMovimientoImpresora(input: MovimientoImpresoraInp
   if (error) throw error;
 }
 
+// Renombra el modelo de una impresora (mover de tienda es una acción aparte,
+// ver moverImpresoraDeTienda más abajo, porque esa además deja un registro
+// de "Transferencia" en el historial).
+export async function editarImpresora(id: string, modelo: string): Promise<void> {
+  const { error } = await supabase.from("printers").update({ modelo: modelo.trim() }).eq("id", id);
+  if (error) throw error;
+}
+
 // Dar de baja / reactivar una impresora. Solo cambia el flag "activa" — no
 // toca ni borra los movimientos ya registrados (quedan intactos en el
 // historial, tal cual se cargaron).

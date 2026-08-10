@@ -44,7 +44,14 @@ import {
 import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
 import { exportarExcel, leerExcel } from "@/lib/excel";
-import { listarImpresoras, type Impresora } from "@/lib/impresoras-data";
+import {
+  listarImpresoras,
+  editarImpresora,
+  cambiarEstadoImpresora,
+  moverImpresoraDeTienda,
+  registrarMovimientoImpresora,
+  type Impresora,
+} from "@/lib/impresoras-data";
 import Link from "next/link";
 
 type FilaImportada = {
@@ -112,6 +119,14 @@ function InventarioContenido() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [impresoras, setImpresoras] = useState<Impresora[]>([]);
+  const [editarImp, setEditarImp] = useState<Impresora | null>(null);
+  const [modeloEditImp, setModeloEditImp] = useState("");
+  const [guardandoEditImp, setGuardandoEditImp] = useState(false);
+  const [moverImp, setMoverImp] = useState<Impresora | null>(null);
+  const [tiendaDestinoImp, setTiendaDestinoImp] = useState("");
+  const [guardandoMoverImp, setGuardandoMoverImp] = useState(false);
+  const [bajaImp, setBajaImp] = useState<Impresora | null>(null);
+  const [guardandoBajaImp, setGuardandoBajaImp] = useState(false);
   const [fotos, setFotos] = useState<Map<string, string>>(new Map());
 
   const [filtroTienda, setFiltroTienda] = useState("todas");
@@ -448,6 +463,88 @@ function InventarioContenido() {
     }
   }
 
+  function abrirEditarImp(i: Impresora) {
+    setEditarImp(i);
+    setModeloEditImp(i.modelo);
+  }
+
+  async function confirmarEditarImp() {
+    if (!editarImp || !modeloEditImp.trim()) {
+      toast.error("Indica el modelo");
+      return;
+    }
+    setGuardandoEditImp(true);
+    try {
+      await editarImpresora(editarImp.id, modeloEditImp);
+      await cargar();
+      setEditarImp(null);
+      toast.success("Impresora actualizada");
+    } catch (err) {
+      toast.error("No se pudo actualizar la impresora: " + (err as Error).message);
+    } finally {
+      setGuardandoEditImp(false);
+    }
+  }
+
+  function abrirMoverImp(i: Impresora) {
+    setMoverImp(i);
+    setTiendaDestinoImp(i.store_id);
+  }
+
+  async function confirmarMoverImp() {
+    if (!moverImp || !tiendaDestinoImp) return;
+    if (tiendaDestinoImp === moverImp.store_id) {
+      toast.error("Elegí una tienda distinta a la actual");
+      return;
+    }
+    const tiendaOrigenId = moverImp.store_id;
+    setGuardandoMoverImp(true);
+    try {
+      await moverImpresoraDeTienda(moverImp.id, tiendaDestinoImp);
+      await registrarMovimientoImpresora({
+        printer_id: moverImp.id,
+        fecha: new Date().toISOString().split("T")[0],
+        tipo: "Transferencia",
+        observacion: `De ${nombreTienda(tiendaOrigenId)} a ${nombreTienda(tiendaDestinoImp)}`,
+        usuario_id: sesion.usuarioId ?? null,
+      });
+      await cargar();
+      setMoverImp(null);
+      toast.success("Impresora movida de tienda");
+    } catch (err) {
+      toast.error("No se pudo mover la impresora: " + (err as Error).message);
+    } finally {
+      setGuardandoMoverImp(false);
+    }
+  }
+
+  function abrirBajaImp(i: Impresora) {
+    setBajaImp(i);
+  }
+
+  async function confirmarBajaImp() {
+    if (!bajaImp) return;
+    const reactivando = !bajaImp.activa;
+    setGuardandoBajaImp(true);
+    try {
+      await cambiarEstadoImpresora(bajaImp.id, reactivando);
+      await registrarMovimientoImpresora({
+        printer_id: bajaImp.id,
+        fecha: new Date().toISOString().split("T")[0],
+        tipo: reactivando ? "Otro" : "Baja",
+        observacion: reactivando ? "Impresora reactivada" : "Impresora dada de baja",
+        usuario_id: sesion.usuarioId ?? null,
+      });
+      await cargar();
+      setBajaImp(null);
+      toast.success(reactivando ? "Impresora reactivada" : "Impresora dada de baja");
+    } catch (err) {
+      toast.error("No se pudo actualizar la impresora: " + (err as Error).message);
+    } finally {
+      setGuardandoBajaImp(false);
+    }
+  }
+
   function imprimirEtiqueta(a: Activo) {
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(
       a.codigo_interno
@@ -703,10 +800,21 @@ function InventarioContenido() {
                   <TableRow key={i.id}>
                     <TableCell>{i.modelo}</TableCell>
                     <TableCell className="hidden nav:table-cell">{nombreTienda(i.store_id)}</TableCell>
-                    <TableCell className="text-right">
-                      <Button asChild size="sm" variant="ghost">
-                        <Link href="/impresoras">Ver en Impresoras</Link>
-                      </Button>
+                    <TableCell>
+                      <div className="flex flex-wrap justify-end gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => abrirEditarImp(i)}>
+                          Editar
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => abrirMoverImp(i)}>
+                          Mover
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => abrirBajaImp(i)}>
+                          Dar de baja
+                        </Button>
+                        <Button asChild size="sm" variant="ghost">
+                          <Link href="/impresoras">Ver historial</Link>
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1279,6 +1387,75 @@ function InventarioContenido() {
           <DialogFooter>
             <Button variant="secondary" onClick={() => setFotoZoom(null)}>
               Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Editar impresora */}
+      <Dialog open={!!editarImp} onOpenChange={(v) => !v && setEditarImp(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar impresora</DialogTitle>
+          </DialogHeader>
+          <div>
+            <Label>Modelo</Label>
+            <Input value={modeloEditImp} onChange={(e) => setModeloEditImp(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setEditarImp(null)}>Cancelar</Button>
+            <Button onClick={confirmarEditarImp} disabled={guardandoEditImp}>
+              {guardandoEditImp ? "Guardando..." : "Guardar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mover impresora de tienda */}
+      <Dialog open={!!moverImp} onOpenChange={(v) => !v && setMoverImp(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mover &quot;{moverImp?.modelo}&quot;</DialogTitle>
+          </DialogHeader>
+          <div>
+            <Label>Tienda destino</Label>
+            <Select value={tiendaDestinoImp} onValueChange={setTiendaDestinoImp}>
+              <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+              <SelectContent>
+                {tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setMoverImp(null)}>Cancelar</Button>
+            <Button onClick={confirmarMoverImp} disabled={guardandoMoverImp}>
+              {guardandoMoverImp ? "Guardando..." : "Confirmar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dar de baja / reactivar impresora */}
+      <Dialog open={!!bajaImp} onOpenChange={(v) => !v && setBajaImp(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {bajaImp?.activa ? "Dar de baja" : "Reactivar"} &quot;{bajaImp?.modelo}&quot;
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {bajaImp?.activa
+              ? "Deja de estar disponible para elegir en Impresoras. El historial de movimientos que ya tiene no se modifica."
+              : "Vuelve a estar disponible para elegir en Impresoras."}
+          </p>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setBajaImp(null)}>Cancelar</Button>
+            <Button
+              variant={bajaImp?.activa ? "destructive" : "default"}
+              onClick={confirmarBajaImp}
+              disabled={guardandoBajaImp}
+            >
+              {guardandoBajaImp ? "Guardando..." : bajaImp?.activa ? "Dar de baja" : "Reactivar"}
             </Button>
           </DialogFooter>
         </DialogContent>
