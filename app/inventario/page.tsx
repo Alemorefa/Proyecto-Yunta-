@@ -44,19 +44,8 @@ import {
 import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
 import { exportarExcel, leerExcel } from "@/lib/excel";
-import {
-  listarImpresoras,
-  editarImpresora,
-  cambiarEstadoImpresora,
-  moverImpresoraDeTienda,
-  registrarMovimientoImpresora,
-  type Impresora,
-} from "@/lib/impresoras-data";
-import {
-  esCategoriaImpresora,
-  sincronizarImpresoraDesdeActivo,
-  sincronizarActivoDesdeImpresora,
-} from "@/lib/vinculo-impresoras";
+import { cambiarEstadoImpresora, moverImpresoraDeTienda } from "@/lib/impresoras-data";
+import { esCategoriaImpresora, sincronizarImpresoraDesdeActivo } from "@/lib/vinculo-impresoras";
 
 type FilaImportada = {
   codigo_interno: string;
@@ -122,15 +111,6 @@ function InventarioContenido() {
   const [sectores, setSectores] = useState<Sector[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
-  const [impresoras, setImpresoras] = useState<Impresora[]>([]);
-  const [editarImp, setEditarImp] = useState<Impresora | null>(null);
-  const [modeloEditImp, setModeloEditImp] = useState("");
-  const [guardandoEditImp, setGuardandoEditImp] = useState(false);
-  const [moverImp, setMoverImp] = useState<Impresora | null>(null);
-  const [tiendaDestinoImp, setTiendaDestinoImp] = useState("");
-  const [guardandoMoverImp, setGuardandoMoverImp] = useState(false);
-  const [bajaImp, setBajaImp] = useState<Impresora | null>(null);
-  const [guardandoBajaImp, setGuardandoBajaImp] = useState(false);
   const [fotos, setFotos] = useState<Map<string, string>>(new Map());
 
   const [filtroTienda, setFiltroTienda] = useState("todas");
@@ -177,14 +157,13 @@ function InventarioContenido() {
   const sesion = useSesionDisplay();
 
   async function cargar() {
-    const [a, t, s, c, p, f, imp] = await Promise.all([
+    const [a, t, s, c, p, f] = await Promise.all([
       listarActivos(),
       listarTiendas(),
       listarSectores(),
       listarCategorias(),
       listarProveedores(),
       listarUltimaFotoPorActivo(),
-      listarImpresoras(),
     ]);
     setActivos(a);
     setTiendas(t);
@@ -192,7 +171,6 @@ function InventarioContenido() {
     setCategorias(c);
     setProveedores(p);
     setFotos(f);
-    setImpresoras(imp);
   }
 
   useEffect(() => {
@@ -246,19 +224,6 @@ function InventarioContenido() {
       return true;
     });
   }, [activos, filtroTienda, filtroCategoria, filtroEstado, busqueda]);
-
-  // Impresoras en vivo desde el módulo Impresoras (no se duplican como
-  // activos): mismas tienda/búsqueda que el resto de Inventario. Las dadas
-  // de baja no se muestran acá, igual que los activos en Baja.
-  const impresorasEnInventario = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
-    return impresoras.filter((i) => {
-      if (!i.activa) return false;
-      if (filtroTienda !== "todas" && i.store_id !== filtroTienda) return false;
-      if (q && !i.modelo.toLowerCase().includes(q)) return false;
-      return true;
-    });
-  }, [impresoras, filtroTienda, busqueda]);
 
   useEffect(() => {
     setLimite(PAGE_SIZE);
@@ -478,91 +443,6 @@ function InventarioContenido() {
       toast.success(esBajaTotal ? "Ítem dado de baja" : "Baja parcial registrada");
     } catch (err) {
       toast.error("No se pudo dar de baja el ítem: " + (err as Error).message);
-    }
-  }
-
-  function abrirEditarImp(i: Impresora) {
-    setEditarImp(i);
-    setModeloEditImp(i.modelo);
-  }
-
-  async function confirmarEditarImp() {
-    if (!editarImp || !modeloEditImp.trim()) {
-      toast.error("Indica el modelo");
-      return;
-    }
-    setGuardandoEditImp(true);
-    try {
-      await editarImpresora(editarImp.id, modeloEditImp);
-      await sincronizarActivoDesdeImpresora(editarImp, { modelo: modeloEditImp });
-      await cargar();
-      setEditarImp(null);
-      toast.success("Impresora actualizada");
-    } catch (err) {
-      toast.error("No se pudo actualizar la impresora: " + (err as Error).message);
-    } finally {
-      setGuardandoEditImp(false);
-    }
-  }
-
-  function abrirMoverImp(i: Impresora) {
-    setMoverImp(i);
-    setTiendaDestinoImp(i.store_id);
-  }
-
-  async function confirmarMoverImp() {
-    if (!moverImp || !tiendaDestinoImp) return;
-    if (tiendaDestinoImp === moverImp.store_id) {
-      toast.error("Elegí una tienda distinta a la actual");
-      return;
-    }
-    const tiendaOrigenId = moverImp.store_id;
-    setGuardandoMoverImp(true);
-    try {
-      await moverImpresoraDeTienda(moverImp.id, tiendaDestinoImp);
-      await registrarMovimientoImpresora({
-        printer_id: moverImp.id,
-        fecha: new Date().toISOString().split("T")[0],
-        tipo: "Transferencia",
-        observacion: `De ${nombreTienda(tiendaOrigenId)} a ${nombreTienda(tiendaDestinoImp)}`,
-        usuario_id: sesion.usuarioId ?? null,
-      });
-      await sincronizarActivoDesdeImpresora(moverImp, { store_id: tiendaDestinoImp });
-      await cargar();
-      setMoverImp(null);
-      toast.success("Impresora movida de tienda");
-    } catch (err) {
-      toast.error("No se pudo mover la impresora: " + (err as Error).message);
-    } finally {
-      setGuardandoMoverImp(false);
-    }
-  }
-
-  function abrirBajaImp(i: Impresora) {
-    setBajaImp(i);
-  }
-
-  async function confirmarBajaImp() {
-    if (!bajaImp) return;
-    const reactivando = !bajaImp.activa;
-    setGuardandoBajaImp(true);
-    try {
-      await cambiarEstadoImpresora(bajaImp.id, reactivando);
-      await registrarMovimientoImpresora({
-        printer_id: bajaImp.id,
-        fecha: new Date().toISOString().split("T")[0],
-        tipo: reactivando ? "Otro" : "Baja",
-        observacion: reactivando ? "Impresora reactivada" : "Impresora dada de baja",
-        usuario_id: sesion.usuarioId ?? null,
-      });
-      await sincronizarActivoDesdeImpresora(bajaImp, { activa: reactivando });
-      await cargar();
-      setBajaImp(null);
-      toast.success(reactivando ? "Impresora reactivada" : "Impresora dada de baja");
-    } catch (err) {
-      toast.error("No se pudo actualizar la impresora: " + (err as Error).message);
-    } finally {
-      setGuardandoBajaImp(false);
     }
   }
 
@@ -824,64 +704,13 @@ function InventarioContenido() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {activosFiltrados.length === 0 && impresorasEnInventario.length === 0 && (
+              {activosFiltrados.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={esAdmin ? 11 : 10} className="text-center text-muted-foreground">
                     No hay ítems registrados
                   </TableCell>
                 </TableRow>
               )}
-              {impresorasEnInventario.map((i) => (
-                <TableRow key={`imp-${i.id}`}>
-                  <TableCell className="w-8 p-1 sm:p-2 nav:hidden"></TableCell>
-                  <TableCell className="hidden nav:table-cell w-12 p-2">
-                    <div className="h-9 w-9 rounded-md bg-muted flex items-center justify-center">
-                      <Printer className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                  </TableCell>
-                  <TableCell className="p-2 max-w-[130px] sm:max-w-[220px] truncate">
-                    <span className="font-medium text-xs sm:text-sm truncate block" title={i.modelo}>
-                      {i.modelo}
-                    </span>
-                  </TableCell>
-                  <TableCell className="p-2 max-w-[95px] sm:max-w-[140px] truncate">
-                    <Badge variant="outline" className="px-1.5 py-0.5 text-[10px] font-normal border-muted-foreground/30 truncate max-w-full inline-block">
-                      Impresora
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden nav:table-cell p-2">
-                    {nombreTienda(i.store_id)} <span className="text-muted-foreground">/ -</span>
-                  </TableCell>
-                  <TableCell className="hidden nav:table-cell p-2">1</TableCell>
-                  <TableCell className="hidden text-xs nav:table-cell p-2 text-muted-foreground">-</TableCell>
-                  <TableCell className="hidden text-xs font-medium nav:table-cell p-2 text-muted-foreground">-</TableCell>
-                  <TableCell className="hidden nav:table-cell p-2">
-                    <Badge variant={i.activa ? "success" : "destructive"}>{i.activa ? "Activa" : "Baja"}</Badge>
-                  </TableCell>
-                  <TableCell className="hidden nav:table-cell p-2 text-muted-foreground">-</TableCell>
-                  {esAdmin && (
-                    <TableCell className="w-10 text-right p-1 sm:p-2">
-                      <div className="flex gap-1 justify-end">
-                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => abrirEditarImp(i)} title="Editar">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => abrirMoverImp(i)} title="Mover de tienda">
-                          <ArrowLeftRight className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8"
-                          onClick={() => abrirBajaImp(i)}
-                          title={i.activa ? "Dar de baja" : "Reactivar"}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
               {activosVisibles.map((a) => {
                 const expandido = expandidos.has(a.id);
                 return (
@@ -1424,74 +1253,6 @@ function InventarioContenido() {
         </DialogContent>
       </Dialog>
 
-      {/* Editar impresora */}
-      <Dialog open={!!editarImp} onOpenChange={(v) => !v && setEditarImp(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar impresora</DialogTitle>
-          </DialogHeader>
-          <div>
-            <Label>Modelo</Label>
-            <Input value={modeloEditImp} onChange={(e) => setModeloEditImp(e.target.value)} />
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setEditarImp(null)}>Cancelar</Button>
-            <Button onClick={confirmarEditarImp} disabled={guardandoEditImp}>
-              {guardandoEditImp ? "Guardando..." : "Guardar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Mover impresora de tienda */}
-      <Dialog open={!!moverImp} onOpenChange={(v) => !v && setMoverImp(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Mover &quot;{moverImp?.modelo}&quot;</DialogTitle>
-          </DialogHeader>
-          <div>
-            <Label>Tienda destino</Label>
-            <Select value={tiendaDestinoImp} onValueChange={setTiendaDestinoImp}>
-              <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-              <SelectContent>
-                {tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setMoverImp(null)}>Cancelar</Button>
-            <Button onClick={confirmarMoverImp} disabled={guardandoMoverImp}>
-              {guardandoMoverImp ? "Guardando..." : "Confirmar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dar de baja / reactivar impresora */}
-      <Dialog open={!!bajaImp} onOpenChange={(v) => !v && setBajaImp(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {bajaImp?.activa ? "Dar de baja" : "Reactivar"} &quot;{bajaImp?.modelo}&quot;
-            </DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {bajaImp?.activa
-              ? "Deja de estar disponible para elegir en Impresoras. El historial de movimientos que ya tiene no se modifica."
-              : "Vuelve a estar disponible para elegir en Impresoras."}
-          </p>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setBajaImp(null)}>Cancelar</Button>
-            <Button
-              variant={bajaImp?.activa ? "destructive" : "default"}
-              onClick={confirmarBajaImp}
-              disabled={guardandoBajaImp}
-            >
-              {guardandoBajaImp ? "Guardando..." : bajaImp?.activa ? "Dar de baja" : "Reactivar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
