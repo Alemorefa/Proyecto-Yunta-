@@ -290,6 +290,10 @@ function InventarioContenido() {
       toast.error("La descripción del ítem es obligatoria");
       return;
     }
+    if (form.fecha_compra && form.fecha_compra > new Date().toISOString().split("T")[0]) {
+      toast.error("La fecha de compra no puede ser futura");
+      return;
+    }
 
     setGuardando(true);
     try {
@@ -1023,7 +1027,12 @@ function InventarioContenido() {
               </div>
               <div>
                 <Label>Fecha de compra</Label>
-                <Input type="date" value={form.fecha_compra} onChange={(e) => setForm({ ...form, fecha_compra: e.target.value })} />
+                <Input
+                  type="date"
+                  max={new Date().toISOString().split("T")[0]}
+                  value={form.fecha_compra}
+                  onChange={(e) => setForm({ ...form, fecha_compra: e.target.value })}
+                />
               </div>
               <div>
                 <Label>Responsable</Label>

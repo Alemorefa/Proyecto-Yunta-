@@ -181,6 +181,10 @@ export default function ImpresorasPage() {
       toast.error("Selecciona una impresora");
       return;
     }
+    if (fecha > hoyISO()) {
+      toast.error("La fecha no puede ser futura");
+      return;
+    }
     setGuardandoMov(true);
     try {
       await registrarMovimientoImpresora({
@@ -533,7 +537,7 @@ export default function ImpresorasPage() {
             </div>
             <div>
               <Label>Fecha</Label>
-              <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+              <Input type="date" max={hoyISO()} value={fecha} onChange={(e) => setFecha(e.target.value)} />
             </div>
             <div>
               <Label>Tipo de movimiento</Label>
