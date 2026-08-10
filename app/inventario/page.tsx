@@ -44,6 +44,8 @@ import {
 import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
 import { exportarExcel, leerExcel } from "@/lib/excel";
+import { listarImpresoras, type Impresora } from "@/lib/impresoras-data";
+import Link from "next/link";
 
 type FilaImportada = {
   codigo_interno: string;
@@ -109,6 +111,7 @@ function InventarioContenido() {
   const [sectores, setSectores] = useState<Sector[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
+  const [impresoras, setImpresoras] = useState<Impresora[]>([]);
   const [fotos, setFotos] = useState<Map<string, string>>(new Map());
 
   const [filtroTienda, setFiltroTienda] = useState("todas");
@@ -155,13 +158,14 @@ function InventarioContenido() {
   const sesion = useSesionDisplay();
 
   async function cargar() {
-    const [a, t, s, c, p, f] = await Promise.all([
+    const [a, t, s, c, p, f, imp] = await Promise.all([
       listarActivos(),
       listarTiendas(),
       listarSectores(),
       listarCategorias(),
       listarProveedores(),
       listarUltimaFotoPorActivo(),
+      listarImpresoras(),
     ]);
     setActivos(a);
     setTiendas(t);
@@ -169,6 +173,7 @@ function InventarioContenido() {
     setCategorias(c);
     setProveedores(p);
     setFotos(f);
+    setImpresoras(imp);
   }
 
   useEffect(() => {
@@ -222,6 +227,19 @@ function InventarioContenido() {
       return true;
     });
   }, [activos, filtroTienda, filtroCategoria, filtroEstado, busqueda]);
+
+  // Impresoras en vivo desde el módulo Impresoras (no se duplican como
+  // activos): mismas tienda/búsqueda que el resto de Inventario. Las dadas
+  // de baja no se muestran acá, igual que los activos en Baja.
+  const impresorasEnInventario = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    return impresoras.filter((i) => {
+      if (!i.activa) return false;
+      if (filtroTienda !== "todas" && i.store_id !== filtroTienda) return false;
+      if (q && !i.modelo.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [impresoras, filtroTienda, busqueda]);
 
   useEffect(() => {
     setLimite(PAGE_SIZE);
@@ -668,6 +686,35 @@ function InventarioContenido() {
           </SelectContent>
         </Select>
       </div>
+
+      {impresorasEnInventario.length > 0 && (
+        <Card className="mb-4">
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Impresora</TableHead>
+                  <TableHead className="hidden nav:table-cell">Tienda</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {impresorasEnInventario.map((i) => (
+                  <TableRow key={i.id}>
+                    <TableCell>{i.modelo}</TableCell>
+                    <TableCell className="hidden nav:table-cell">{nombreTienda(i.store_id)}</TableCell>
+                    <TableCell className="text-right">
+                      <Button asChild size="sm" variant="ghost">
+                        <Link href="/impresoras">Ver en Impresoras</Link>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-0 overflow-x-auto max-w-full">
