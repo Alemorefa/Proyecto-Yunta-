@@ -1,4 +1,4 @@
-# Sistema de Inventario · LY25 BMT (prototipo web)
+# Sistema de Inventario · (prototipo web)
 
 Prototipo funcional del sistema de inventario para las sucursales de La Yunta,
 construido con **Next.js 14 (App Router) + React + TypeScript + TailwindCSS +
