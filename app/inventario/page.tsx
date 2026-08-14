@@ -46,6 +46,7 @@ import { useSesionDisplay } from "@/lib/session";
 import { exportarExcel, leerExcel } from "@/lib/excel";
 import { cambiarEstadoImpresora, moverImpresoraDeTienda } from "@/lib/impresoras-data";
 import { esCategoriaImpresora, sincronizarImpresoraDesdeActivo } from "@/lib/vinculo-impresoras";
+import { obtenerConfig } from "@/lib/config-data";
 
 type FilaImportada = {
   codigo_interno: string;
@@ -102,6 +103,28 @@ function badgeEstado(estado: EstadoActivo) {
   return "secondary";
 }
 
+// Redondea a 2 decimales sin arrastrar errores de punto flotante (ej. 1.0049999 -> 1).
+function redondear2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+// Autocompletar de precio con la cotización de Configuración: si la persona
+// carga un solo precio (ARS o USD) y deja el otro vacío, se calcula solo.
+// Apenas la persona escribe algo a mano en el otro campo, deja de
+// pisarlo — por eso se trackea con arsTocado/usdTocado en vez de mirar
+// nada más si el campo está vacío.
+function usdDesdeArs(ars: string, cotizacion: number): string {
+  const valor = parseFloat(ars);
+  if (!valor || !cotizacion) return "";
+  return redondear2(valor / cotizacion).toString();
+}
+
+function arsDesdeUsd(usd: string, cotizacion: number): string {
+  const valor = parseFloat(usd);
+  if (!valor || !cotizacion) return "";
+  return redondear2(valor * cotizacion).toString();
+}
+
 const PAGE_SIZE = 25;
 
 function InventarioContenido() {
@@ -124,6 +147,14 @@ function InventarioContenido() {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(ACTIVO_VACIO);
   const [guardando, setGuardando] = useState(false);
+
+  // Cotización actual (ARS por 1 USD, la misma de Configuración) para
+  // autocompletar el precio en la otra moneda. arsTocado/usdTocado
+  // registran si la persona ya escribió algo a mano en ese campo durante
+  // esta apertura del diálogo, para dejar de recalcularlo apenas lo toca.
+  const [cotizacion, setCotizacion] = useState<number | null>(null);
+  const [arsTocado, setArsTocado] = useState(false);
+  const [usdTocado, setUsdTocado] = useState(false);
 
   const [transferir, setTransferir] = useState<Activo | null>(null);
   const [nuevaTienda, setNuevaTienda] = useState("");
@@ -157,13 +188,14 @@ function InventarioContenido() {
   const sesion = useSesionDisplay();
 
   async function cargar() {
-    const [a, t, s, c, p, f] = await Promise.all([
+    const [a, t, s, c, p, f, config] = await Promise.all([
       listarActivos(),
       listarTiendas(),
       listarSectores(),
       listarCategorias(),
       listarProveedores(),
       listarUltimaFotoPorActivo(),
+      obtenerConfig(),
     ]);
     setActivos(a);
     setTiendas(t);
@@ -171,6 +203,7 @@ function InventarioContenido() {
     setCategorias(c);
     setProveedores(p);
     setFotos(f);
+    setCotizacion(config.cotizacion_usd || null);
   }
 
   useEffect(() => {
@@ -242,6 +275,8 @@ function InventarioContenido() {
   function abrirNuevo() {
     setEditId(null);
     setForm(ACTIVO_VACIO);
+    setArsTocado(false);
+    setUsdTocado(false);
     setOpen(true);
   }
 
@@ -267,6 +302,10 @@ function InventarioContenido() {
       observaciones: a.observaciones || "",
       foto_url: fotos.get(a.id) || "",
     });
+    // Un ítem existente ya tiene sus precios cargados a mano — no
+    // recalcularlos solos apenas se abre para editar otra cosa.
+    setArsTocado(!!a.precio_ars);
+    setUsdTocado(!!a.precio_usd);
     setOpen(true);
   }
 
@@ -967,12 +1006,42 @@ function InventarioContenido() {
             <div />
             <div>
               <Label>Precio unitario (ARS)</Label>
-              <Input type="number" value={form.precio_ars} onChange={(e) => setForm({ ...form, precio_ars: e.target.value })} />
+              <Input
+                type="number"
+                value={form.precio_ars}
+                onChange={(e) => {
+                  const valor = e.target.value;
+                  setArsTocado(true);
+                  setForm((f) => ({
+                    ...f,
+                    precio_ars: valor,
+                    precio_usd: !usdTocado && cotizacion ? usdDesdeArs(valor, cotizacion) : f.precio_usd,
+                  }));
+                }}
+              />
             </div>
             <div>
               <Label>Precio unitario (USD)</Label>
-              <Input type="number" value={form.precio_usd} onChange={(e) => setForm({ ...form, precio_usd: e.target.value })} />
+              <Input
+                type="number"
+                value={form.precio_usd}
+                onChange={(e) => {
+                  const valor = e.target.value;
+                  setUsdTocado(true);
+                  setForm((f) => ({
+                    ...f,
+                    precio_usd: valor,
+                    precio_ars: !arsTocado && cotizacion ? arsDesdeUsd(valor, cotizacion) : f.precio_ars,
+                  }));
+                }}
+              />
             </div>
+            {cotizacion && (
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                Cotización actual: 1 USD = $ {cotizacion.toLocaleString("es-AR")}. Completá un precio y el otro se
+                calcula solo (se puede pisar a mano).
+              </p>
+            )}
           </div>
 
           {/* Detalles adicionales: opcionales, colapsados por defecto */}
