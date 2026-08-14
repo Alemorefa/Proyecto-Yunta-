@@ -3,14 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node -e \"fs.rmSync('.next', { recursive: true, force: true })\" && next dev",
-    "clean": "node -e \"fs.rmSync('.next', { recursive: true, force: true })\"",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.4",
     "next": "14.2.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -23,8 +21,7 @@
     "tailwind-merge": "^2.4.0",
     "lucide-react": "^0.427.0",
     "sonner": "^1.5.0",
-    "xlsx": "^0.18.5",
-    "html5-qrcode": "^2.3.8"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "typescript": "^5.5.4",

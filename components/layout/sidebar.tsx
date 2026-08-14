@@ -54,7 +54,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className="flex items-center justify-between border-b border-white/10 p-4 md:p-6">
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 md:px-6">
           <h1 className="text-lg font-bold text-[var(--sidebar-accent)]">Inventarios</h1>
           <button
             className="rounded p-1 text-white/70 hover:bg-white/10 nav:hidden"
@@ -85,7 +85,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           })}
         </nav>
         <div className="border-t border-white/10 p-4 text-xs text-white/40">
-          v0.1.0-prototipo
+          v0.1.0
         </div>
       </aside>
     </>

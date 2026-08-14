@@ -7,7 +7,7 @@
     /* Paleta navy + azul (según la referencia de diseño compartida) */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
-    --card: 220 14% 96%;
+    --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
     --primary: 221.2 83.2% 53.3%;
     --primary-foreground: 210 40% 98%;
@@ -23,45 +23,35 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.6rem;
-    /* Color de los links de texto tipo "Ver más →" (distinto de --primary,
-       que se usa para botones y necesita más contraste como fondo). */
-    --link: 221.2 83.2% 53.3%;
 
     /* Navy del sidebar/hero, fuera del sistema de shadcn (se usa como hex directo) */
-    --navy-900: #1a222e;
-    --navy-800: #232d3c;
-    /* Acento fijo del sidebar (título + ítem activo): no depende del tema,
-       porque el sidebar siempre tiene fondo navy en claro y oscuro. */
-    --sidebar-accent: #6ec1e4;
+    --navy-900: #16213e;
+    --navy-800: #1b2a47;
   }
 
-  /* Modo oscuro: solo 3 tonos (según la foto) — negro, gris oscuro y ese azul marino */
+  /* Modo oscuro: negros profundos (no gris medio), acento azul */
   .dark {
-    --background: 0 0% 6%;
-    --foreground: 0 0% 96%;
-    --card: 0 0% 14%;
-    --card-foreground: 0 0% 96%;
-    --primary: 221 45% 28%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 0 0% 16%;
-    --secondary-foreground: 0 0% 96%;
-    --muted: 0 0% 16%;
-    --muted-foreground: 0 0% 65%;
-    --accent: 0 0% 16%;
-    --accent-foreground: 0 0% 96%;
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 70% 7%;
+    --card-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 0 0% 20%;
-    --input: 0 0% 20%;
-    --ring: 221 45% 40%;
-    /* Más claro y menos saturado que --primary, para que el texto se lea
-       bien sobre el fondo casi negro (según la referencia compartida). */
-    --link: 216 24% 52%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
 
-    /* Mismo navy que en modo claro, para que el sidebar/hero se vean iguales en ambos temas */
-    --navy-900: #1a222e;
-    --navy-800: #232d3c;
-    --sidebar-accent: #6ec1e4;
+    /* Navy todavía más oscuro para que el sidebar/hero no compitan con el resto */
+    --navy-900: #0a0f1d;
+    --navy-800: #0f1830;
   }
 }
 
