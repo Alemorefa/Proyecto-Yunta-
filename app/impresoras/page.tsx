@@ -19,6 +19,7 @@ import {
   listarMovimientosImpresora,
   registrarMovimientoImpresora,
   cambiarEstadoImpresora,
+  cambiarDiasToner,
   moverImpresoraDeTienda,
   type Impresora,
   type MovimientoImpresora,
@@ -27,8 +28,8 @@ import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
 import { exportarExcel } from "@/lib/excel";
 import { sincronizarActivoDesdeImpresora, asegurarActivoParaImpresora } from "@/lib/vinculo-impresoras";
-import { obtenerConfig } from "@/lib/config-data";
 import { calcularEstadoToner } from "@/lib/toner";
+import { hoyISO, hace } from "@/lib/fechas";
 import { MedidorToner } from "@/components/impresoras/medidor-toner";
 
 function badgeTipo(tipo: TipoMovimientoImpresora) {
@@ -41,9 +42,25 @@ function badgeTipo(tipo: TipoMovimientoImpresora) {
   return "secondary";
 }
 
-const hoyISO = () => new Date().toISOString().split("T")[0];
 
 const PAGE_SIZE = 25;
+
+// Períodos del filtro de fecha sobre la tabla de movimientos. Se resuelven a
+// una fecha de corte: se muestran los movimientos desde esa fecha en adelante.
+const PERIODOS = [
+  { clave: "todo", label: "Todo el historial", dias: null },
+  { clave: "semana", label: "Última semana", dias: 7 },
+  { clave: "mes", label: "Último mes", dias: 30 },
+  { clave: "trimestre", label: "Últimos 3 meses", dias: 90 },
+] as const;
+
+type ClavePeriodo = (typeof PERIODOS)[number]["clave"];
+
+function fechaCorte(periodo: ClavePeriodo): string | null {
+  const dias = PERIODOS.find((p) => p.clave === periodo)?.dias;
+  if (!dias) return null;
+  return hace(dias);
+}
 
 // calcularMensajeMovimiento fue escrito contra la forma local (impresora_id);
 // acá adaptamos los movimientos de Supabase (printer_id) a esa forma.
@@ -69,11 +86,16 @@ export default function ImpresorasPage() {
   const [modeloNuevo, setModeloNuevo] = useState("");
   const [tiendaNueva, setTiendaNueva] = useState("");
   const [usaTonerNueva, setUsaTonerNueva] = useState(true);
+  const [diasTonerNueva, setDiasTonerNueva] = useState("45");
   const [guardandoImpresora, setGuardandoImpresora] = useState(false);
 
-  // Días estimados de duración del cartucho (Configuración). Alimenta el
-  // medidor de tóner de cada fila.
-  const [diasToner, setDiasToner] = useState<number | null>(null);
+  // Filtro de período sobre la tabla de movimientos.
+  const [filtroPeriodo, setFiltroPeriodo] = useState<ClavePeriodo>("todo");
+
+  // Días de cartucho de la impresora elegida en "Registrar movimiento",
+  // editable ahí mismo (al cargar una recarga es cuando se nota si ese
+  // modelo rinde más o menos de lo estimado).
+  const [diasTonerMov, setDiasTonerMov] = useState("");
 
   const [openMov, setOpenMov] = useState(false);
   const [tiendaMov, setTiendaMov] = useState("");
@@ -104,16 +126,14 @@ export default function ImpresorasPage() {
   const sesion = useSesionDisplay();
 
   async function cargar() {
-    const [i, m, t, config] = await Promise.all([
+    const [i, m, t] = await Promise.all([
       listarImpresoras(),
       listarMovimientosImpresora(),
       listarTiendas(),
-      obtenerConfig(),
     ]);
     setImpresoras(i);
     setMovimientosImpresora(m);
     setTiendas(t);
-    setDiasToner(config.dias_duracion_toner);
   }
 
   useEffect(() => {
@@ -132,16 +152,18 @@ export default function ImpresorasPage() {
 
   const movimientos = useMemo(() => {
     const impresoraIds = new Set(impresorasFiltradas.map((i) => i.id));
+    const desde = fechaCorte(filtroPeriodo);
     return [...movimientosImpresora]
       .filter((m) => impresoraIds.has(m.printer_id))
+      .filter((m) => !desde || m.fecha >= desde)
       .sort((a, b) => b.fecha.localeCompare(a.fecha));
-  }, [movimientosImpresora, impresorasFiltradas]);
+  }, [movimientosImpresora, impresorasFiltradas, filtroPeriodo]);
 
   const movimientosVisibles = movimientos.slice(0, limite);
 
   useEffect(() => {
     setLimite(PAGE_SIZE);
-  }, [filtroTienda, busqueda]);
+  }, [filtroTienda, busqueda, filtroPeriodo]);
 
   if (!impresoras) return null;
 
@@ -155,12 +177,28 @@ export default function ImpresorasPage() {
     }
     setGuardandoImpresora(true);
     try {
-      const nueva = await crearImpresora(modeloNuevo.trim(), tiendaNueva, usaTonerNueva);
+      const dias = diasTonerNueva.trim() ? Number(diasTonerNueva) : null;
+      const nueva = await crearImpresora(modeloNuevo.trim(), tiendaNueva, usaTonerNueva, dias);
       await asegurarActivoParaImpresora(nueva);
+
+      // Una impresora nueva viene con su cartucho puesto: se registra la
+      // carga con la fecha de hoy para que el medidor arranque lleno y quede
+      // el movimiento en el historial (si no, aparecería "Sin registros").
+      if (usaTonerNueva) {
+        await registrarMovimientoImpresora({
+          printer_id: nueva.id,
+          fecha: hoyISO(),
+          tipo: "Compra",
+          observacion: "Alta de impresora — cartucho nuevo",
+          usuario_id: sesion.usuarioId ?? null,
+        });
+      }
+
       await cargar();
       setModeloNuevo("");
       setTiendaNueva("");
       setUsaTonerNueva(true);
+      setDiasTonerNueva("45");
       setOpenImpresora(false);
       toast.success("Impresora agregada");
     } catch (err) {
@@ -174,10 +212,18 @@ export default function ImpresorasPage() {
     const imp = idImpresora ? impresoras?.find((i) => i.id === idImpresora) : undefined;
     setTiendaMov(imp?.store_id || "");
     setImpresoraId(idImpresora || "");
+    setDiasTonerMov(imp?.dias_toner ? String(imp.dias_toner) : "");
     setFecha(hoyISO());
     setTipo("Recarga");
     setObservacion("");
     setOpenMov(true);
+  }
+
+  // Al cambiar de impresora, trae los días de cartucho de esa impresora.
+  function elegirImpresoraMov(id: string) {
+    setImpresoraId(id);
+    const imp = impresoras?.find((i) => i.id === id);
+    setDiasTonerMov(imp?.dias_toner ? String(imp.dias_toner) : "");
   }
 
   function cambiarTiendaMov(id: string) {
@@ -186,7 +232,10 @@ export default function ImpresorasPage() {
     // modelos repetidos entre tiendas (ej. HL 1200 en Vélez y en Centro) y
     // no queremos que quede seleccionada la de otra sucursal por error.
     const impActual = impresoras?.find((i) => i.id === impresoraId);
-    if (impActual && impActual.store_id !== id) setImpresoraId("");
+    if (impActual && impActual.store_id !== id) {
+      setImpresoraId("");
+      setDiasTonerMov("");
+    }
   }
 
   const impresorasDeLaTiendaMov = impresoras.filter((i) => i.store_id === tiendaMov && i.activa);
@@ -209,6 +258,15 @@ export default function ImpresorasPage() {
         observacion,
         usuario_id: sesion.usuarioId ?? null,
       });
+
+      // Si se corrigieron los días de cartucho en el diálogo, se guardan
+      // sobre la impresora (afecta el medidor de acá en adelante).
+      const impElegida = impresoras?.find((i) => i.id === impresoraId);
+      const diasNuevos = diasTonerMov.trim() ? Number(diasTonerMov) : null;
+      if (impElegida && impElegida.usa_toner && diasNuevos !== (impElegida.dias_toner ?? null)) {
+        await cambiarDiasToner(impresoraId, diasNuevos);
+      }
+
       await cargar();
       setOpenMov(false);
       toast.success("Movimiento registrado");
@@ -372,7 +430,7 @@ export default function ImpresorasPage() {
                       <Badge variant={i.activa ? "success" : "destructive"}>{i.activa ? "Activa" : "Baja"}</Badge>
                     </TableCell>
                     <TableCell>
-                      <MedidorToner estado={calcularEstadoToner(i, movimientosImpresora, diasToner)} />
+                      <MedidorToner estado={calcularEstadoToner(i, movimientosImpresora)} />
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">
@@ -391,6 +449,24 @@ export default function ImpresorasPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Filtro de período: aplica solo a la tabla de movimientos de abajo */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">Movimientos:</span>
+        <Select value={filtroPeriodo} onValueChange={(v) => setFiltroPeriodo(v as ClavePeriodo)}>
+          <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {PERIODOS.map((p) => (
+              <SelectItem key={p.clave} value={p.clave}>{p.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {filtroPeriodo !== "todo" && (
+          <span className="text-xs text-muted-foreground">
+            {movimientos.length} movimiento{movimientos.length === 1 ? "" : "s"} en el período
+          </span>
+        )}
+      </div>
 
       <Card>
         <CardContent className="p-0">
@@ -525,6 +601,24 @@ export default function ImpresorasPage() {
                 </span>
               </span>
             </label>
+            {usaTonerNueva && (
+              <div>
+                <Label>Duración estimada del cartucho (días)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder="Ej: 45"
+                  value={diasTonerNueva}
+                  onChange={(e) => setDiasTonerNueva(e.target.value)}
+                  className="max-w-[160px]"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Cuánto dura un cartucho en esta impresora. Se puede corregir después desde &quot;Registrar
+                  movimiento&quot;. Al guardar se registra la carga del cartucho con la fecha de hoy, así el
+                  medidor arranca lleno.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setOpenImpresora(false)}>Cancelar</Button>
@@ -553,7 +647,7 @@ export default function ImpresorasPage() {
             </div>
             <div>
               <Label>Impresora</Label>
-              <Select value={impresoraId} onValueChange={setImpresoraId} disabled={!tiendaMov}>
+              <Select value={impresoraId} onValueChange={elegirImpresoraMov} disabled={!tiendaMov}>
                 <SelectTrigger>
                   <SelectValue placeholder={tiendaMov ? "Seleccionar" : "Elegí primero una tienda"} />
                 </SelectTrigger>
@@ -590,6 +684,24 @@ export default function ImpresorasPage() {
                 onChange={(e) => setObservacion(e.target.value)}
               />
             </div>
+            {/* Corregir la duración del cartucho de esta impresora: al cargar
+                una recarga es cuando se nota si rinde más o menos de lo estimado. */}
+            {impresoraId && impresoras.find((i) => i.id === impresoraId)?.usa_toner && (
+              <div className="rounded-md border px-3 py-2">
+                <Label>Duración estimada del cartucho (días)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder="Sin definir"
+                  value={diasTonerMov}
+                  onChange={(e) => setDiasTonerMov(e.target.value)}
+                  className="max-w-[160px]"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Es el valor de esta impresora. Si lo cambiás acá, queda guardado y el medidor se recalcula.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setOpenMov(false)}>Cancelar</Button>

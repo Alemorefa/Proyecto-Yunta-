@@ -543,6 +543,15 @@ end $$;
 -- para todas). Cuando llega a cero, se avisa en la app y por email.
 -- ============================================================================
 alter table public.printers add column if not exists usa_toner boolean not null default true;
+
+-- Duración estimada del cartucho, POR IMPRESORA (no hay un valor global: cada
+-- modelo rinde distinto). Se carga al dar de alta la impresora y se puede
+-- corregir después desde el diálogo de registrar movimiento. En null, esa
+-- impresora no tiene medidor ni genera avisos.
+alter table public.printers add column if not exists dias_toner integer;
+
+-- Reemplazada por printers.dias_toner. Se deja la columna para no romper
+-- instalaciones viejas, pero la app ya no la usa.
 alter table public.settings add column if not exists dias_duracion_toner integer;
 
 -- ----------------------------------------------------------------------------

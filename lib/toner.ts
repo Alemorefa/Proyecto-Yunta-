@@ -25,16 +25,15 @@ export type { EstadoToner, ImpresoraAgotada, ImpresoraToner, MovimientoToner } f
 export async function cargarDatosToner(): Promise<{
   impresoras: ImpresoraToner[];
   movimientos: MovimientoToner[];
-  diasEstimados: number | null;
 }> {
-  const [impresorasRes, movimientosRes, configRes] = await Promise.all([
+  const [impresorasRes, movimientosRes] = await Promise.all([
     supabase
       .from("printers")
-      .select("id, modelo, store_id, activa, usa_toner")
+      .select("id, modelo, store_id, activa, usa_toner, dias_toner")
       .eq("usa_toner", true)
-      .eq("activa", true),
+      .eq("activa", true)
+      .not("dias_toner", "is", null),
     supabase.from("printer_movements").select("printer_id, fecha, tipo").in("tipo", TIPOS_CARGA_TONER),
-    supabase.from("settings").select("dias_duracion_toner").eq("id", 1).single(),
   ]);
 
   if (impresorasRes.error) throw impresorasRes.error;
@@ -43,7 +42,6 @@ export async function cargarDatosToner(): Promise<{
   return {
     impresoras: (impresorasRes.data ?? []) as ImpresoraToner[],
     movimientos: (movimientosRes.data ?? []) as MovimientoToner[],
-    diasEstimados: configRes.data?.dias_duracion_toner ?? null,
   };
 }
 

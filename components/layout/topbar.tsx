@@ -136,9 +136,9 @@ export function Topbar({
   useEffect(() => {
     let vivo = true;
     cargarDatosToner()
-      .then(({ impresoras, movimientos, diasEstimados }) => {
+      .then(({ impresoras, movimientos }) => {
         if (!vivo) return;
-        setTonerAgotado(impresorasConTonerAgotado(impresoras, movimientos, diasEstimados));
+        setTonerAgotado(impresorasConTonerAgotado(impresoras, movimientos));
       })
       // Silencioso a propósito: si falla, simplemente no se muestra el aviso
       // (no tiene sentido molestar con un toast de error en cada pantalla).

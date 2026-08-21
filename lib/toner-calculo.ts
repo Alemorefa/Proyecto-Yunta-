@@ -4,10 +4,12 @@
 //
 // No hay un sensor real: la estimación es por tiempo. Se toma la fecha del
 // último movimiento que implica un cartucho nuevo o recargado y se compara
-// contra los días que se estima que dura uno (Configuración →
-// "Duración estimada del cartucho", un único valor para todas las
-// impresoras). El nivel NO se guarda en la base: se calcula al vuelo cada
-// vez, así que nunca queda desincronizado con los movimientos reales.
+// contra los días que dura un cartucho EN ESA impresora
+// (printers.dias_toner, que se carga al darla de alta y se puede corregir
+// después). El nivel NO se guarda en la base: se calcula al vuelo cada vez,
+// así que nunca queda desincronizado con los movimientos reales.
+
+import { hoyISO } from "./fechas";
 
 // Tipos mínimos (estructurales) para no arrastrar dependencias de cliente.
 export type ImpresoraToner = {
@@ -16,6 +18,7 @@ export type ImpresoraToner = {
   store_id: string;
   activa: boolean;
   usa_toner: boolean;
+  dias_toner: number | null;
 };
 
 export type MovimientoToner = {
@@ -50,9 +53,7 @@ export type EstadoToner =
       agotado: boolean;
     };
 
-export function hoyISO(): string {
-  return new Date().toISOString().split("T")[0];
-}
+export { hoyISO };
 
 // Días entre dos fechas 'yyyy-mm-dd'. Se comparan como fechas puras (sin
 // hora ni zona horaria) para que no haya corrimientos de un día.
@@ -63,10 +64,10 @@ function diasEntre(desde: string, hasta: string): number {
 }
 
 export function calcularEstadoToner(
-  impresora: Pick<ImpresoraToner, "id" | "usa_toner">,
-  movimientos: MovimientoToner[],
-  diasEstimados: number | null
+  impresora: Pick<ImpresoraToner, "id" | "usa_toner" | "dias_toner">,
+  movimientos: MovimientoToner[]
 ): EstadoToner {
+  const diasEstimados = impresora.dias_toner;
   if (!impresora.usa_toner) return { tipo: "sin-toner" };
   if (!diasEstimados || diasEstimados <= 0) return { tipo: "sin-configurar" };
 
@@ -106,13 +107,12 @@ export type ImpresoraAgotada<T extends ImpresoraToner = ImpresoraToner> = {
 
 export function impresorasConTonerAgotado<T extends ImpresoraToner>(
   impresoras: T[],
-  movimientos: MovimientoToner[],
-  diasEstimados: number | null
+  movimientos: MovimientoToner[]
 ): ImpresoraAgotada<T>[] {
   const resultado: ImpresoraAgotada<T>[] = [];
   for (const imp of impresoras) {
     if (!imp.activa) continue;
-    const estado = calcularEstadoToner(imp, movimientos, diasEstimados);
+    const estado = calcularEstadoToner(imp, movimientos);
     if (estado.tipo === "ok" && estado.agotado) {
       resultado.push({
         impresora: imp,

@@ -29,7 +29,6 @@ export default function ConfiguracionPage() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [nombreNegocio, setNombreNegocio] = useState("");
   const [cotizacion, setCotizacion] = useState("");
-  const [diasToner, setDiasToner] = useState("");
   const [guardandoConfig, setGuardandoConfig] = useState(false);
   const [actualizandoCotizacion, setActualizandoCotizacion] = useState(false);
   const [nuevaCategoria, setNuevaCategoria] = useState("");
@@ -46,7 +45,6 @@ export default function ConfiguracionPage() {
       .then((c) => {
         setNombreNegocio(c.nombre_negocio || "");
         setCotizacion(c.cotizacion_usd ? String(c.cotizacion_usd) : "");
-        setDiasToner(c.dias_duracion_toner ? String(c.dias_duracion_toner) : "");
         setCargado(true);
       })
       .catch((err) => toast.error("No se pudo cargar la configuración: " + (err as Error).message));
@@ -61,7 +59,6 @@ export default function ConfiguracionPage() {
       await guardarConfigSupabase({
         nombre_negocio: nombreNegocio,
         cotizacion_usd: cotizacion.trim() ? Number(cotizacion) : null,
-        dias_duracion_toner: diasToner.trim() ? Number(diasToner) : null,
       });
       toast.success("Configuración guardada");
     } catch (err) {
@@ -189,22 +186,6 @@ export default function ConfiguracionPage() {
               </a>{" "}
               (dólar oficial, valor de venta — API comunitaria, no es un dato oficial del BCRA). En cualquier caso,
               no queda guardada hasta que toques &quot;Guardar Configuración&quot;.
-            </p>
-          </div>
-          <div>
-            <Label>Duración estimada del cartucho de tóner (días)</Label>
-            <Input
-              type="number"
-              min={1}
-              placeholder="Ej: 45"
-              value={diasToner}
-              onChange={(e) => setDiasToner(e.target.value)}
-              className="max-w-[160px]"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Se aplica a todas las impresoras marcadas como &quot;lleva tóner&quot;. Con esto se calcula el medidor
-              que se ve en Impresoras y el aviso cuando se estima agotado. Si lo dejás vacío, no se calcula ni se
-              avisa nada.
             </p>
           </div>
           <Button onClick={guardarConfig} disabled={guardandoConfig}>

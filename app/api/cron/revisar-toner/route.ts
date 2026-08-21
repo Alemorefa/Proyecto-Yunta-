@@ -39,23 +39,21 @@ export async function GET(req: NextRequest) {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // 1) Días de duración configurados. Sin esto no se puede estimar nada.
-  const { data: config } = await admin.from("settings").select("dias_duracion_toner").eq("id", 1).single();
-  const diasEstimados = config?.dias_duracion_toner ?? null;
-  if (!diasEstimados) {
-    return NextResponse.json({ ok: true, motivo: "Sin duración de cartucho configurada", enviados: 0 });
-  }
-
-  // 2) Impresoras con tóner + sus movimientos.
+  // 1) Impresoras con tóner y con duración cargada (cada una tiene la suya)
+  //    + sus movimientos.
   const [{ data: impresoras }, { data: movimientos }] = await Promise.all([
-    admin.from("printers").select("id, modelo, store_id, activa, usa_toner").eq("usa_toner", true).eq("activa", true),
+    admin
+      .from("printers")
+      .select("id, modelo, store_id, activa, usa_toner, dias_toner")
+      .eq("usa_toner", true)
+      .eq("activa", true)
+      .not("dias_toner", "is", null),
     admin.from("printer_movements").select("printer_id, fecha, tipo"),
   ]);
 
   const agotadas = impresorasConTonerAgotado(
     (impresoras ?? []) as ImpresoraToner[],
-    (movimientos ?? []) as MovimientoToner[],
-    diasEstimados
+    (movimientos ?? []) as MovimientoToner[]
   );
   if (agotadas.length === 0) {
     return NextResponse.json({ ok: true, agotadas: 0, enviados: 0 });
@@ -99,7 +97,7 @@ export async function GET(req: NextRequest) {
     .map(
       (a) =>
         `<li><strong>${a.impresora.modelo}</strong> (${nombreTienda(a.impresora.store_id)}) — ` +
-        `${a.diasTranscurridos} días desde la última carga</li>`
+        `${a.diasTranscurridos} días desde la última carga, estimado ${a.impresora.dias_toner} días</li>`
     )
     .join("");
 
@@ -107,7 +105,7 @@ export async function GET(req: NextRequest) {
     <div style="font-family: sans-serif; line-height: 1.5;">
       <h2 style="margin:0 0 8px">Tóner agotado</h2>
       <p style="margin:0 0 12px">
-        Según la estimación (${diasEstimados} días por cartucho), ${paraAvisar.length === 1 ? "esta impresora necesita" : "estas impresoras necesitan"} recarga:
+        Según la duración estimada de cada impresora, ${paraAvisar.length === 1 ? "esta necesita" : "estas necesitan"} recarga:
       </p>
       <ul>${filas}</ul>
       <p style="color:#666; font-size:13px; margin-top:16px">

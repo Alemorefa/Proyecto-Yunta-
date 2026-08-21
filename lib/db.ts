@@ -5,6 +5,7 @@
 // stores, sectors, categories, assets, asset_movements, users, settings.
 
 import { useEffect, useState } from "react";
+import { esFechaSinHora, formatearFechaSinHora } from "./fechas";
 
 export type EstadoTienda = "activa" | "inactiva";
 
@@ -269,6 +270,12 @@ export function now() {
 }
 
 export function formatDate(iso: string) {
+  // Las fechas "de calendario" (yyyy-mm-dd, como las de los movimientos de
+  // impresora) no tienen hora ni zona: si se pasan por new Date() quedan en
+  // medianoche UTC y al mostrarlas en hora local de Argentina retroceden un
+  // día. Se formatean como texto. Ver lib/fechas.ts.
+  if (esFechaSinHora(iso)) return formatearFechaSinHora(iso);
+
   return new Date(iso).toLocaleString("es-ES", {
     day: "2-digit",
     month: "2-digit",

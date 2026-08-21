@@ -15,6 +15,9 @@ export type Impresora = {
   // Si lleva cartucho de tóner (una térmica de tickets, por ejemplo, no).
   // Solo las que lo llevan tienen medidor y generan avisos de agotado.
   usa_toner: boolean;
+  // Días que dura un cartucho EN ESTA impresora (cada modelo rinde distinto).
+  // En null no se calcula medidor ni se avisa.
+  dias_toner: number | null;
   fecha_creacion: string;
 };
 
@@ -36,11 +39,17 @@ export async function listarImpresoras(): Promise<Impresora[]> {
 export async function crearImpresora(
   modelo: string,
   storeId: string,
-  usaToner = true
+  usaToner = true,
+  diasToner: number | null = null
 ): Promise<Impresora> {
   const { data, error } = await supabase
     .from("printers")
-    .insert({ modelo: modelo.trim(), store_id: storeId, usa_toner: usaToner })
+    .insert({
+      modelo: modelo.trim(),
+      store_id: storeId,
+      usa_toner: usaToner,
+      dias_toner: usaToner ? diasToner : null,
+    })
     .select()
     .single();
   if (error) throw error;
@@ -51,6 +60,14 @@ export async function crearImpresora(
 // darla de alta, desde Impresoras o desde el activo vinculado en Inventario).
 export async function cambiarUsaToner(id: string, usaToner: boolean): Promise<void> {
   const { error } = await supabase.from("printers").update({ usa_toner: usaToner }).eq("id", id);
+  if (error) throw error;
+}
+
+// Corrige la duración estimada del cartucho de una impresora. Se usa desde el
+// diálogo de registrar movimiento: al cargar una recarga es cuando se nota
+// que ese modelo rinde más o menos de lo estimado.
+export async function cambiarDiasToner(id: string, dias: number | null): Promise<void> {
+  const { error } = await supabase.from("printers").update({ dias_toner: dias }).eq("id", id);
   if (error) throw error;
 }
 

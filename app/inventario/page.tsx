@@ -47,6 +47,7 @@ import { exportarExcel, leerExcel } from "@/lib/excel";
 import { cambiarEstadoImpresora, moverImpresoraDeTienda } from "@/lib/impresoras-data";
 import { esCategoriaImpresora, sincronizarImpresoraDesdeActivo, usaTonerDeActivo } from "@/lib/vinculo-impresoras";
 import { obtenerConfig } from "@/lib/config-data";
+import { hoyISO } from "@/lib/fechas";
 
 type FilaImportada = {
   codigo_interno: string;
@@ -340,7 +341,7 @@ function InventarioContenido() {
       toast.error("La descripción del ítem es obligatoria");
       return;
     }
-    if (form.fecha_compra && form.fecha_compra > new Date().toISOString().split("T")[0]) {
+    if (form.fecha_compra && form.fecha_compra > hoyISO()) {
       toast.error("La fecha de compra no puede ser futura");
       return;
     }
@@ -1126,7 +1127,7 @@ function InventarioContenido() {
                 <Label>Fecha de compra</Label>
                 <Input
                   type="date"
-                  max={new Date().toISOString().split("T")[0]}
+                  max={hoyISO()}
                   value={form.fecha_compra}
                   onChange={(e) => setForm({ ...form, fecha_compra: e.target.value })}
                 />
