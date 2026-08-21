@@ -5,3 +5,10 @@ out/
 .env.local
 *.log
 .DS_Store
+graphify-out/
+# Caché de compilación de TypeScript (se regenera solo)
+tsconfig.tsbuildinfo
+# Respaldos locales
+_RESPALDO-*.zip
+# Copias en conflicto de OneDrive (que no vuelvan a entrar al repo)
+*-BOOK-GDDKINLEMB*

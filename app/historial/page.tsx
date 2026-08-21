@@ -8,15 +8,39 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Download } from "lucide-react";
-import { getDB, formatDate, type DB, type AccionMovimiento } from "@/lib/db";
+import { formatDate, type AccionMovimiento } from "@/lib/db";
+import { listarTiendas, type Tienda } from "@/lib/catalogos";
+import { listarActivos, type Activo } from "@/lib/inventario-data";
+import { listarMovimientos, listarUsuariosBasico, type Movimiento, type UsuarioBasico } from "@/lib/movimientos-data";
+import { listarImpresoras, listarMovimientosImpresora, type Impresora, type MovimientoImpresora } from "@/lib/impresoras-data";
 import { exportarExcel } from "@/lib/excel";
 import { toast } from "sonner";
 
 const ACCIONES: AccionMovimiento[] = ["Alta", "Modificación", "Cambio de estado", "Cambio de sector", "Transferencia", "Baja"];
 const PAGE_SIZE = 25;
 
+// Fila normalizada para mostrar movimientos de activos y de impresoras en
+// la misma tabla — las impresoras tienen su propio historial (recargas,
+// reset, etc.) que antes solo se veía en el módulo Impresoras.
+type FilaMovimiento = {
+  id: string;
+  fecha: string;
+  itemNombre: string;
+  itemCodigo: string;
+  accion: string;
+  storeOrigenId: string | null;
+  storeDestinoId: string | null;
+  usuarioId: string | null;
+  observacion: string | null;
+};
+
 export default function HistorialPage() {
-  const [data, setData] = useState<DB | null>(null);
+  const [movimientos, setMovimientos] = useState<Movimiento[] | null>(null);
+  const [activos, setActivos] = useState<Activo[]>([]);
+  const [tiendas, setTiendas] = useState<Tienda[]>([]);
+  const [usuarios, setUsuarios] = useState<UsuarioBasico[]>([]);
+  const [impresoras, setImpresoras] = useState<Impresora[]>([]);
+  const [movimientosImpresora, setMovimientosImpresora] = useState<MovimientoImpresora[]>([]);
   const [filtroTienda, setFiltroTienda] = useState("todas");
   const [filtroAccion, setFiltroAccion] = useState("todas");
   const [filtroFecha, setFiltroFecha] = useState("");
@@ -24,39 +48,82 @@ export default function HistorialPage() {
   const [limite, setLimite] = useState(PAGE_SIZE);
 
   useEffect(() => {
-    setData(getDB());
+    Promise.all([
+      listarMovimientos(),
+      listarActivos(),
+      listarTiendas(),
+      listarUsuariosBasico(),
+      listarImpresoras(),
+      listarMovimientosImpresora(),
+    ])
+      .then(([m, a, t, u, imp, movImp]) => {
+        setMovimientos(m);
+        setActivos(a);
+        setTiendas(t);
+        setUsuarios(u);
+        setImpresoras(imp);
+        setMovimientosImpresora(movImp);
+      })
+      .catch((err) => toast.error("No se pudo cargar el historial: " + (err as Error).message));
   }, []);
 
   useEffect(() => {
     setLimite(PAGE_SIZE);
   }, [filtroTienda, filtroAccion, filtroFecha, busqueda]);
 
-  const movimientos = useMemo(() => {
-    if (!data) return [];
-    let movs = [...data.movimientos].reverse();
-    if (filtroAccion !== "todas") movs = movs.filter((m) => m.accion === filtroAccion);
-    if (filtroFecha) movs = movs.filter((m) => m.fecha.startsWith(filtroFecha));
+  const nombreTienda = (id?: string | null) => (id ? tiendas.find((t) => t.id === id)?.nombre : undefined);
+  const nombreUsuario = (id: string | null) => (id ? usuarios.find((u) => u.id === id)?.nombre || "-" : "-");
+
+  const todasLasFilas = useMemo((): FilaMovimiento[] => {
+    if (!movimientos) return [];
+    const filasActivos: FilaMovimiento[] = movimientos.map((m) => {
+      const activo = activos.find((a) => a.id === m.asset_id);
+      return {
+        id: m.id,
+        fecha: m.fecha,
+        itemNombre: activo?.nombre || "Activo eliminado",
+        itemCodigo: activo?.codigo_interno || "",
+        accion: m.accion,
+        storeOrigenId: m.store_origen_id ?? null,
+        storeDestinoId: m.store_destino_id ?? null,
+        usuarioId: m.usuario_id,
+        observacion: m.observacion,
+      };
+    });
+    const filasImpresoras: FilaMovimiento[] = movimientosImpresora.map((m) => {
+      const imp = impresoras.find((i) => i.id === m.printer_id);
+      return {
+        id: m.id,
+        fecha: m.fecha,
+        itemNombre: imp ? `Impresora: ${imp.modelo}` : "Impresora eliminada",
+        itemCodigo: "",
+        accion: m.tipo,
+        storeOrigenId: null,
+        storeDestinoId: imp?.store_id ?? null,
+        usuarioId: m.usuario_id,
+        observacion: m.observacion,
+      };
+    });
+    return [...filasActivos, ...filasImpresoras].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  }, [movimientos, activos, movimientosImpresora, impresoras]);
+
+  const movimientosFiltrados = useMemo(() => {
+    let filas = todasLasFilas;
+    if (filtroAccion !== "todas") filas = filas.filter((f) => f.accion === filtroAccion);
+    if (filtroFecha) filas = filas.filter((f) => f.fecha.startsWith(filtroFecha));
     if (filtroTienda !== "todas") {
-      movs = movs.filter(
-        (m) => m.tienda_origen_id === filtroTienda || m.tienda_destino_id === filtroTienda
-      );
+      filas = filas.filter((f) => f.storeOrigenId === filtroTienda || f.storeDestinoId === filtroTienda);
     }
     if (busqueda.trim()) {
       const q = busqueda.trim().toLowerCase();
-      movs = movs.filter((m) => {
-        const activo = data.activos.find((a) => a.id === m.activo_id);
-        return activo && (activo.nombre.toLowerCase().includes(q) || activo.codigo_interno.toLowerCase().includes(q));
-      });
+      filas = filas.filter((f) => f.itemNombre.toLowerCase().includes(q) || f.itemCodigo.toLowerCase().includes(q));
     }
-    return movs;
-  }, [data, filtroTienda, filtroAccion, filtroFecha, busqueda]);
+    return filas;
+  }, [todasLasFilas, filtroTienda, filtroAccion, filtroFecha, busqueda]);
 
-  if (!data) return null;
+  if (!movimientos) return null;
 
-  const movimientosVisibles = movimientos.slice(0, limite);
-
-  const nombreActivo = (id: string) => data.activos.find((a) => a.id === id)?.nombre || "Activo eliminado";
-  const nombreTienda = (id?: string | null) => (id ? data.tiendas.find((t) => t.id === id)?.nombre : undefined);
+  const movimientosVisibles = movimientosFiltrados.slice(0, limite);
 
   function limpiarFiltros() {
     setFiltroTienda("todas");
@@ -66,14 +133,14 @@ export default function HistorialPage() {
   }
 
   function exportar() {
-    const filas = movimientos.map((m) => ({
-      Fecha: formatDate(m.fecha),
-      Activo: nombreActivo(m.activo_id),
-      Acción: m.accion,
-      "Tienda origen": nombreTienda(m.tienda_origen_id) || "",
-      "Tienda destino": nombreTienda(m.tienda_destino_id) || "",
-      Usuario: m.usuario,
-      Observación: m.observacion || "",
+    const filas = movimientosFiltrados.map((f) => ({
+      Fecha: formatDate(f.fecha),
+      Activo: f.itemNombre,
+      Acción: f.accion,
+      "Tienda origen": nombreTienda(f.storeOrigenId) || "",
+      "Tienda destino": nombreTienda(f.storeDestinoId) || "",
+      Usuario: nombreUsuario(f.usuarioId),
+      Observación: f.observacion || "",
     }));
     exportarExcel(filas, `historial-movimientos-${new Date().toISOString().split("T")[0]}`, "Historial");
     toast.success("Excel generado");
@@ -99,7 +166,7 @@ export default function HistorialPage() {
           <SelectTrigger className="w-48"><SelectValue placeholder="Tienda" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todas">Todas las tiendas</SelectItem>
-            {data.tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
+            {tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filtroAccion} onValueChange={setFiltroAccion}>
@@ -127,29 +194,29 @@ export default function HistorialPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {movimientos.length === 0 && (
+              {movimientosFiltrados.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-muted-foreground">
                     No hay movimientos registrados
                   </TableCell>
                 </TableRow>
               )}
-              {movimientosVisibles.map((m) => (
-                <TableRow key={m.id}>
-                  <TableCell>{formatDate(m.fecha)}</TableCell>
-                  <TableCell>{nombreActivo(m.activo_id)}</TableCell>
+              {movimientosVisibles.map((f) => (
+                <TableRow key={f.id}>
+                  <TableCell>{formatDate(f.fecha)}</TableCell>
+                  <TableCell>{f.itemNombre}</TableCell>
                   <TableCell>
-                    <Badge variant={m.accion === "Baja" ? "destructive" : m.accion === "Alta" ? "success" : "secondary"}>
-                      {m.accion}
+                    <Badge variant={f.accion === "Baja" ? "destructive" : f.accion === "Alta" ? "success" : "secondary"}>
+                      {f.accion}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {m.tienda_origen_id || m.tienda_destino_id
-                      ? `${nombreTienda(m.tienda_origen_id) || "-"} → ${nombreTienda(m.tienda_destino_id) || "-"}`
+                    {f.storeOrigenId || f.storeDestinoId
+                      ? `${nombreTienda(f.storeOrigenId) || "-"} → ${nombreTienda(f.storeDestinoId) || "-"}`
                       : "-"}
                   </TableCell>
-                  <TableCell>{m.usuario}</TableCell>
-                  <TableCell>{m.observacion || "-"}</TableCell>
+                  <TableCell>{nombreUsuario(f.usuarioId)}</TableCell>
+                  <TableCell>{f.observacion || "-"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -157,10 +224,10 @@ export default function HistorialPage() {
         </CardContent>
       </Card>
 
-      {movimientos.length > movimientosVisibles.length && (
+      {movimientosFiltrados.length > movimientosVisibles.length && (
         <div className="mt-3 flex justify-center">
           <Button variant="outline" onClick={() => setLimite((l) => l + PAGE_SIZE)}>
-            Cargar más ({movimientos.length - movimientosVisibles.length} restantes)
+            Cargar más ({movimientosFiltrados.length - movimientosVisibles.length} restantes)
           </Button>
         </div>
       )}

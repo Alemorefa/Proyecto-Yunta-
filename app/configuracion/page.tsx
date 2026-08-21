@@ -1,125 +1,138 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { X } from "lucide-react";
-import { getDB, saveDB, idGen, clearAllData, type DB } from "@/lib/db";
-import { setRolActivo, useRolActivo, type RolUsuario } from "@/lib/role";
-import { setSesionDisplay, useSesionDisplay } from "@/lib/session";
+import { RefreshCw, X } from "lucide-react";
+import { useRolActivo } from "@/lib/role";
+import { useSesionDisplay } from "@/lib/session";
+import { cerrarSesion as cerrarSesionAuth } from "@/lib/auth";
 import { marcarBackupHecho } from "@/lib/backup";
+import { obtenerCotizacionOficial } from "@/lib/dolar";
+import { obtenerConfig, guardarConfig as guardarConfigSupabase, registrarCotizacion } from "@/lib/config-data";
+import { generarBackupCompleto } from "@/lib/backup-data";
+import {
+  listarCategorias,
+  crearCategoria,
+  borrarCategoria,
+  contarActivosPorCategoria,
+  type Categoria,
+} from "@/lib/catalogos";
+import { cn } from "@/lib/utils";
 
 export default function ConfiguracionPage() {
-  const [data, setData] = useState<DB | null>(null);
+  const [cargado, setCargado] = useState(false);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [nombreNegocio, setNombreNegocio] = useState("");
   const [cotizacion, setCotizacion] = useState("");
+  const [diasToner, setDiasToner] = useState("");
+  const [guardandoConfig, setGuardandoConfig] = useState(false);
+  const [actualizandoCotizacion, setActualizandoCotizacion] = useState(false);
   const [nuevaCategoria, setNuevaCategoria] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
-  const { rol } = useRolActivo();
+  const [exportando, setExportando] = useState(false);
+  const { rol, esAdmin } = useRolActivo();
   const sesion = useSesionDisplay();
-  const [nombreSesion, setNombreSesion] = useState("");
+
+  async function cargarCategorias() {
+    setCategorias(await listarCategorias());
+  }
 
   useEffect(() => {
-    const db = getDB();
-    setData(db);
-    setNombreNegocio(db.config.nombre || "");
-    setCotizacion((db.config.cotizacion_usd || 0).toString());
+    obtenerConfig()
+      .then((c) => {
+        setNombreNegocio(c.nombre_negocio || "");
+        setCotizacion(c.cotizacion_usd ? String(c.cotizacion_usd) : "");
+        setDiasToner(c.dias_duracion_toner ? String(c.dias_duracion_toner) : "");
+        setCargado(true);
+      })
+      .catch((err) => toast.error("No se pudo cargar la configuración: " + (err as Error).message));
+    cargarCategorias().catch((err) => toast.error("No se pudieron cargar las categorías: " + (err as Error).message));
   }, []);
 
-  useEffect(() => {
-    setNombreSesion(sesion.nombre);
-  }, [sesion]);
+  if (!cargado) return null;
 
-  if (!data) return null;
-
-  function guardarConfig() {
-    const db = getDB();
-    db.config = { nombre: nombreNegocio.trim(), cotizacion_usd: parseFloat(cotizacion) || 0 };
-    saveDB(db);
-    setData(db);
-    toast.success("Configuración guardada");
+  async function guardarConfig() {
+    setGuardandoConfig(true);
+    try {
+      await guardarConfigSupabase({
+        nombre_negocio: nombreNegocio,
+        cotizacion_usd: cotizacion.trim() ? Number(cotizacion) : null,
+        dias_duracion_toner: diasToner.trim() ? Number(diasToner) : null,
+      });
+      toast.success("Configuración guardada");
+    } catch (err) {
+      toast.error("No se pudo guardar: " + (err as Error).message);
+    } finally {
+      setGuardandoConfig(false);
+    }
   }
 
-  function agregarCategoria() {
+  async function actualizarCotizacion() {
+    setActualizandoCotizacion(true);
+    try {
+      const info = await obtenerCotizacionOficial();
+      setCotizacion(String(info.venta));
+      registrarCotizacion(info).catch(() => {});
+      toast.success('Cotización oficial traída. Tocá "Guardar Configuración" para dejarla guardada.');
+    } catch {
+      toast.error("No se pudo traer la cotización");
+    } finally {
+      setActualizandoCotizacion(false);
+    }
+  }
+
+  async function agregarCategoria() {
     if (!nuevaCategoria.trim()) return;
-    const db = getDB();
-    db.categorias.push({ id: idGen(), nombre: nuevaCategoria.trim() });
-    saveDB(db);
-    setData(db);
-    setNuevaCategoria("");
+    try {
+      await crearCategoria(nuevaCategoria.trim());
+      setNuevaCategoria("");
+      await cargarCategorias();
+    } catch (err) {
+      toast.error("No se pudo crear la categoría: " + (err as Error).message);
+    }
   }
 
-  function quitarCategoria(id: string) {
-    const db = getDB();
-    const enUso = db.activos.filter((a) => a.categoria_id === id && a.estado !== "Baja").length;
+  async function quitarCategoria(id: string) {
+    const enUso = await contarActivosPorCategoria(id);
     if (enUso > 0) {
       const confirmado = confirm(
         `Hay ${enUso} ítem(s) de inventario con esta categoría. Si la borrás van a quedar sin categoría asignada. ¿Continuar?`
       );
       if (!confirmado) return;
     }
-    db.categorias = db.categorias.filter((c) => c.id !== id);
-    db.activos = db.activos.map((a) => (a.categoria_id === id ? { ...a, categoria_id: null } : a));
-    saveDB(db);
-    setData(db);
+    try {
+      await borrarCategoria(id);
+      await cargarCategorias();
+    } catch (err) {
+      toast.error("No se pudo borrar la categoría: " + (err as Error).message);
+    }
   }
 
-  function exportarDatos() {
-    const db = getDB();
-    const blob = new Blob([JSON.stringify(db, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `inventario-ly25-backup-${new Date().toISOString().split("T")[0]}.json`;
-    a.click();
-    marcarBackupHecho();
-    toast.success("Datos exportados");
+  async function exportarDatos() {
+    setExportando(true);
+    try {
+      const backup = await generarBackupCompleto();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `inventario-ly25-backup-${new Date().toISOString().split("T")[0]}.json`;
+      a.click();
+      marcarBackupHecho();
+      toast.success("Backup exportado");
+    } catch (err) {
+      toast.error("No se pudo generar el backup: " + (err as Error).message);
+    } finally {
+      setExportando(false);
+    }
   }
 
-  function importarDatos(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const parsed = JSON.parse(ev.target?.result as string) as Partial<DB>;
-        if (!parsed.tiendas || !parsed.activos) {
-          toast.error("Formato inválido");
-          return;
-        }
-        saveDB(parsed as DB);
-        setData(getDB());
-        toast.success("Datos importados correctamente");
-      } catch (err) {
-        toast.error("Error al importar: " + (err as Error).message);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
-  }
-
-  function guardarSesion() {
-    setSesionDisplay({ nombre: nombreSesion.trim() || "Invitado", usuarioId: undefined });
-    toast.success("Sesión actualizada");
-  }
-
-  function elegirUsuario(usuarioId: string) {
-    const usuario = data?.usuarios.find((u) => u.id === usuarioId);
-    if (!usuario) return;
-    setSesionDisplay({ nombre: usuario.nombre, usuarioId: usuario.id });
-    setRolActivo(usuario.rol);
-    toast.success(`Ahora navegás como ${usuario.nombre}`);
-  }
-
-  function limpiarTodo() {
-    if (!confirm("¿Estás seguro? Se borrarán TODOS los datos guardados en este navegador.")) return;
-    clearAllData();
-    setData(getDB());
-    toast.success("Todos los datos fueron eliminados");
+  async function cerrarSesion() {
+    await cerrarSesionAuth();
+    toast.info("Sesión cerrada");
   }
 
   return (
@@ -128,60 +141,21 @@ export default function ConfiguracionPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Sesión (prototipo)</CardTitle>
+          <CardTitle className="text-base">Sesión</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Todavía no hay autenticación real conectada (eso llega con Supabase Auth + Row Level Security). Mientras
-            tanto, elegí qué usuario de la lista está navegando: de ahí sale el nombre que se ve en el encabezado y
-            el rol (Administrador/Usuario) que define los permisos.
+            El login es real (Supabase Auth): tu contraseña queda hasheada del lado del servidor, nadie (ni
+            nosotros) puede verla. El primer administrador se crea solo al registrarse por primera vez; para
+            ascender a alguien más a Administrador, andá a la pantalla <strong>Usuarios</strong> y cambiale el rol.
           </p>
 
-          {data.usuarios.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <Select value={sesion.usuarioId || ""} onValueChange={elegirUsuario}>
-                <SelectTrigger className="w-72"><SelectValue placeholder="Elegir usuario" /></SelectTrigger>
-                <SelectContent>
-                  {data.usuarios.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.nombre} · {u.rol === "admin" ? "Administrador" : "Usuario"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Badge variant={rol === "admin" ? "info" : "secondary"}>
-                Actual: {sesion.nombre} ({rol === "admin" ? "Administrador" : "Usuario"})
-              </Badge>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Todavía no cargaste usuarios. Andá a la sección <strong>Usuarios</strong> y creá el primero (elegí rol
-              Administrador) para poder seleccionarlo acá.
-            </p>
-          )}
-
-          <details className="rounded-md border px-3 py-2">
-            <summary className="cursor-pointer select-none text-sm font-medium text-muted-foreground">
-              Ajuste manual (por si todavía no hay usuarios cargados)
-            </summary>
-            <div className="mt-3 flex flex-wrap items-end gap-3">
-              <div>
-                <Label>Rol</Label>
-                <Select value={rol} onValueChange={(v) => setRolActivo(v as RolUsuario)}>
-                  <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Administrador</SelectItem>
-                    <SelectItem value="usuario">Usuario</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Nombre (encabezado)</Label>
-                <Input value={nombreSesion} onChange={(e) => setNombreSesion(e.target.value)} className="max-w-sm" />
-              </div>
-              <Button variant="outline" onClick={guardarSesion}>Guardar</Button>
-            </div>
-          </details>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Badge variant={rol === "admin" ? "info" : "secondary"}>
+              Sesión actual: {sesion.nombre} ({rol === "admin" ? "Administrador" : "Usuario"})
+            </Badge>
+            <Button variant="outline" onClick={cerrarSesion}>Cerrar sesión</Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -196,9 +170,46 @@ export default function ConfiguracionPage() {
           </div>
           <div>
             <Label>Cotización USD (ARS por 1 USD)</Label>
-            <Input type="number" value={cotizacion} onChange={(e) => setCotizacion(e.target.value)} />
+            <div className="flex flex-wrap gap-2">
+              <Input
+                type="number"
+                value={cotizacion}
+                onChange={(e) => setCotizacion(e.target.value)}
+                className="max-w-[160px]"
+              />
+              <Button variant="outline" onClick={actualizarCotizacion} disabled={actualizandoCotizacion}>
+                <RefreshCw className={cn("h-4 w-4", actualizandoCotizacion && "animate-spin")} />
+                Cotizar actual (dólar oficial)
+              </Button>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              La podés escribir a mano, o traerla con el botón desde{" "}
+              <a href="https://dolarapi.com" target="_blank" rel="noreferrer" className="underline">
+                DolarApi.com
+              </a>{" "}
+              (dólar oficial, valor de venta — API comunitaria, no es un dato oficial del BCRA). En cualquier caso,
+              no queda guardada hasta que toques &quot;Guardar Configuración&quot;.
+            </p>
           </div>
-          <Button onClick={guardarConfig}>Guardar Configuración</Button>
+          <div>
+            <Label>Duración estimada del cartucho de tóner (días)</Label>
+            <Input
+              type="number"
+              min={1}
+              placeholder="Ej: 45"
+              value={diasToner}
+              onChange={(e) => setDiasToner(e.target.value)}
+              className="max-w-[160px]"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Se aplica a todas las impresoras marcadas como &quot;lleva tóner&quot;. Con esto se calcula el medidor
+              que se ve en Impresoras y el aviso cuando se estima agotado. Si lo dejás vacío, no se calcula ni se
+              avisa nada.
+            </p>
+          </div>
+          <Button onClick={guardarConfig} disabled={guardandoConfig}>
+            {guardandoConfig ? "Guardando..." : "Guardar Configuración"}
+          </Button>
         </CardContent>
       </Card>
 
@@ -208,38 +219,49 @@ export default function ConfiguracionPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-1">
-            {data.categorias.map((c) => (
+            {categorias.map((c) => (
               <Badge key={c.id} variant="secondary" className="gap-1">
                 {c.nombre}
-                <button onClick={() => quitarCategoria(c.id)}>
-                  <X className="h-3 w-3" />
-                </button>
+                {esAdmin && (
+                  <button onClick={() => quitarCategoria(c.id)}>
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
               </Badge>
             ))}
           </div>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Nueva categoría"
-              value={nuevaCategoria}
-              onChange={(e) => setNuevaCategoria(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), agregarCategoria())}
-            />
-            <Button variant="outline" onClick={agregarCategoria}>Agregar</Button>
-          </div>
+          {esAdmin && (
+            <div className="flex gap-2">
+              <Input
+                placeholder="Nueva categoría"
+                value={nuevaCategoria}
+                onChange={(e) => setNuevaCategoria(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), agregarCategoria())}
+              />
+              <Button variant="outline" onClick={agregarCategoria}>Agregar</Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Datos (prototipo local)</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={exportarDatos}>Exportar Datos (JSON)</Button>
-          <Button variant="secondary" onClick={() => fileRef.current?.click()}>Importar Datos</Button>
-          <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={importarDatos} />
-          <Button variant="destructive" onClick={limpiarTodo}>Limpiar Todos los Datos</Button>
-        </CardContent>
-      </Card>
+      {esAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Backup de Datos</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Todos los datos viven en Supabase (no en este navegador), así que no hace falta &quot;importar&quot; ni
+              &quot;limpiar&quot; nada desde acá. Este botón descarga una foto completa (JSON) de tiendas, inventario,
+              movimientos, impresoras, usuarios y configuración, útil como respaldo o para revisar algo puntual.
+            </p>
+            <Button variant="outline" onClick={exportarDatos} disabled={exportando}>
+              <RefreshCw className={cn("h-4 w-4", exportando && "animate-spin")} />
+              {exportando ? "Generando..." : "Exportar Backup (JSON)"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

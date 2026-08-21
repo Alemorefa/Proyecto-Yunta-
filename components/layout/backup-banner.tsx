@@ -20,11 +20,11 @@ export function BackupBanner() {
       <div className="flex items-center gap-2">
         <AlertTriangle className="h-4 w-4 shrink-0" />
         <span>
-          Todos los datos viven en este navegador. Hace tiempo que no exportás un backup —{" "}
+          Hace tiempo que no exportás un backup de tus datos —{" "}
           <Link href="/configuracion" className="font-medium underline underline-offset-2">
             exportalo ahora
           </Link>{" "}
-          para no perder información.
+          para tener un respaldo actualizado por las dudas.
         </span>
       </div>
       <button aria-label="Cerrar aviso" onClick={() => setOculto(true)} className="shrink-0 opacity-70 hover:opacity-100">

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/revisar-toner",
+      "schedule": "0 11 * * *"
+    }
+  ]
+}

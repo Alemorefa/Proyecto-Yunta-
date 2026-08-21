@@ -8,9 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Plus,
-  ArrowLeftRight,
   ArrowDownCircle,
-  History,
   Store,
   Package,
   Users,
@@ -21,25 +19,11 @@ import {
   Pencil,
   ArrowRightLeft,
 } from "lucide-react";
-import {
-  getDB,
-  seedInitialData,
-  formatDate,
-  type DB,
-  type AccionMovimiento,
-} from "@/lib/db";
-import { useRolActivo } from "@/lib/role";
+import { formatDate, type AccionMovimiento } from "@/lib/db";
+import { listarTiendas, listarCategorias, type Tienda, type Categoria } from "@/lib/catalogos";
+import { listarActivos, type Activo } from "@/lib/inventario-data";
+import { listarMovimientos, listarUsuariosBasico, type Movimiento, type UsuarioBasico } from "@/lib/movimientos-data";
 import { getUltimoBackup } from "@/lib/backup";
-
-// Accesos rápidos: cada uno navega a la pantalla correspondiente ya lista
-// para actuar (diálogo de alta abierto, tipo de movimiento preseleccionado).
-// Los mismos destinos se disparan con el mouse o con el atajo de teclado.
-const ACCESOS_RAPIDOS = [
-  { tecla: "N", label: "Nuevo ítem", href: "/inventario?abrir=nuevo", icon: Plus, soloAdmin: true },
-  { tecla: "T", label: "Transferencia", href: "/movimientos?accion=transferencia", icon: ArrowLeftRight, soloAdmin: true },
-  { tecla: "B", label: "Baja", href: "/movimientos?accion=baja", icon: ArrowDownCircle, soloAdmin: true },
-  { tecla: "H", label: "Historial", href: "/historial", icon: History, soloAdmin: false },
-] as const;
 
 function iconoAccion(accion: AccionMovimiento) {
   switch (accion) {
@@ -56,13 +40,25 @@ function iconoAccion(accion: AccionMovimiento) {
 
 export default function InicioPage() {
   const router = useRouter();
-  const [data, setData] = useState<DB | null>(null);
+  const [tiendas, setTiendas] = useState<Tienda[]>([]);
+  const [activos, setActivos] = useState<Activo[]>([]);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
+  const [usuarios, setUsuarios] = useState<UsuarioBasico[]>([]);
+  const [cargado, setCargado] = useState(false);
   const [ultimoBackup, setUltimoBackup] = useState<string | null>(null);
-  const { esAdmin } = useRolActivo();
 
   useEffect(() => {
-    seedInitialData();
-    setData(getDB());
+    Promise.all([listarTiendas(), listarActivos(), listarCategorias(), listarMovimientos(), listarUsuariosBasico()])
+      .then(([t, a, c, m, u]) => {
+        setTiendas(t);
+        setActivos(a);
+        setCategorias(c);
+        setMovimientos(m);
+        setUsuarios(u);
+        setCargado(true);
+      })
+      .catch((err) => toast.error("No se pudo cargar el inicio: " + (err as Error).message));
     setUltimoBackup(getUltimoBackup());
   }, []);
 
@@ -71,83 +67,63 @@ export default function InicioPage() {
     router.push(href);
   }
 
-  // Atajos de teclado N/T/B/H: se ignoran mientras el usuario está
-  // escribiendo en un campo, o si hay una tecla modificadora presionada.
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      const target = e.target as HTMLElement | null;
-      const escribiendo =
-        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
-      if (escribiendo || e.ctrlKey || e.metaKey || e.altKey) return;
-
-      const key = e.key.toLowerCase();
-      const accion = ACCESOS_RAPIDOS.find((a) => a.tecla.toLowerCase() === key);
-      if (!accion) return;
-      if (accion.soloAdmin && !esAdmin) return;
-      e.preventDefault();
-      irA(accion.href, `Acceso rápido: ${accion.label} (${accion.tecla})`);
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [esAdmin]);
-
   const resumen = useMemo(
     () => [
       {
         label: "Tiendas",
-        value: data?.tiendas.length ?? 0,
+        value: tiendas.length,
         icon: Store,
         href: "/tiendas",
         cta: "Gestionar tiendas",
       },
       {
         label: "Activos",
-        value: data?.activos.length ?? 0,
+        value: activos.length,
         icon: Package,
         href: "/inventario",
         cta: "Ver inventario",
       },
       {
         label: "Categorías",
-        value: data?.categorias.length ?? 0,
+        value: categorias.length,
         icon: FolderCog,
         href: "/configuracion",
         cta: "Editar categorías",
       },
       {
         label: "Usuarios",
-        value: data?.usuarios.length ?? 0,
+        value: usuarios.length,
         icon: Users,
         href: "/usuarios",
         cta: "Ver usuarios",
       },
     ],
-    [data]
+    [tiendas, activos, categorias, usuarios]
   );
 
   const ultimosMovimientos = useMemo(() => {
-    if (!data) return [];
-    return [...data.movimientos].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
-  }, [data]);
+    return [...movimientos].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
+  }, [movimientos]);
+
+  const nombreUsuario = (id: string | null) => (id ? usuarios.find((u) => u.id === id)?.nombre || "-" : "-");
 
   const pasos = useMemo(
     () => [
       {
         label: "Creá tu primera tienda",
-        done: (data?.tiendas.length ?? 0) > 0,
+        done: tiendas.length > 0,
         href: "/tiendas",
         cta: "Ir a Tiendas",
       },
       {
         label: "Cargá tu primer activo",
-        done: (data?.activos.length ?? 0) > 0,
+        done: activos.length > 0,
         href: "/inventario?abrir=nuevo",
         cta: "Agregar ítem",
       },
       {
         label: "Agregá a tu equipo",
-        done: (data?.usuarios.length ?? 0) > 0,
+        done: usuarios.length > 1,
         href: "/usuarios",
         cta: "Ir a Usuarios",
       },
@@ -158,11 +134,11 @@ export default function InicioPage() {
         cta: "Ir a Configuración",
       },
     ],
-    [data, ultimoBackup]
+    [tiendas, activos, usuarios, ultimoBackup]
   );
   const pasosPendientes = pasos.filter((p) => !p.done);
 
-  if (!data) return null;
+  if (!cargado) return null;
 
   return (
     <div className="space-y-6">
@@ -171,36 +147,6 @@ export default function InicioPage() {
         <p className="opacity-80">
           Administrá los activos físicos de todas las sucursales: altas, transferencias, bajas e historial.
         </p>
-      </div>
-
-      {/* Accesos rápidos */}
-      <div>
-        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Accesos rápidos
-        </h3>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {ACCESOS_RAPIDOS.filter((a) => !a.soloAdmin || esAdmin).map((a) => {
-            const Icon = a.icon;
-            return (
-              <button
-                key={a.href}
-                onClick={() => irA(a.href)}
-                className="group flex items-center gap-3 rounded-xl border bg-card p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-                  <Icon className="h-5 w-5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-foreground">{a.label}</span>
-                  <span className="text-xs text-muted-foreground">Atajo: {a.tecla}</span>
-                </span>
-                <kbd className="hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground sm:block">
-                  {a.tecla}
-                </kbd>
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       {/* KPIs con CTA contextual */}
@@ -219,7 +165,7 @@ export default function InicioPage() {
                 <p className="mb-3 text-3xl font-bold text-foreground">{r.value}</p>
                 <Link
                   href={r.href}
-                  className="text-xs font-medium text-primary hover:underline"
+                  className="text-xs font-medium text-[hsl(var(--link))] hover:underline"
                 >
                   {r.cta} →
                 </Link>
@@ -247,7 +193,7 @@ export default function InicioPage() {
               <ul className="space-y-3">
                 {ultimosMovimientos.map((m) => {
                   const Icon = iconoAccion(m.accion);
-                  const activo = data.activos.find((a) => a.id === m.activo_id);
+                  const activo = activos.find((a) => a.id === m.asset_id);
                   return (
                     <li key={m.id} className="flex items-start gap-3 text-sm">
                       <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
@@ -258,7 +204,7 @@ export default function InicioPage() {
                           {m.accion} · {activo?.nombre ?? "Activo eliminado"}
                         </span>
                         <span className="block truncate text-xs text-muted-foreground">
-                          {m.observacion || "Sin observación"} · {m.usuario}
+                          {m.observacion || "Sin observación"} · {nombreUsuario(m.usuario_id)}
                         </span>
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground">{formatDate(m.fecha)}</span>

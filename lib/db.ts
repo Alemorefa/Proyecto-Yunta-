@@ -30,7 +30,7 @@ export type Categoria = {
   nombre: string;
 };
 
-export type EstadoActivo = "Nuevo" | "Bueno" | "Regular" | "Dañado" | "Irreparable" | "Baja";
+export type EstadoActivo = "Nuevo" | "Bueno" | "Malo" | "Baja";
 
 // Un "activo" puede ser una unidad única con número de serie (ej. un
 // servidor) o un ítem agrupado con cantidad (ej. "Cámaras x26 unidades").
@@ -101,6 +101,10 @@ export type Usuario = {
   rol: RolUsuario;
   activo?: boolean;
   fecha_creacion?: string;
+  // Contraseña del login local (texto plano en localStorage: es el
+  // prototipo, no una solución segura). Se reemplaza por Supabase Auth
+  // (hash + sesiones reales) más adelante.
+  contrasena?: string;
 };
 
 export type ConfigNegocio = {
@@ -114,7 +118,18 @@ export type ConfigNegocio = {
 // columna calculada que dice cuántos días pasaron desde el movimiento
 // anterior de esa misma impresora.
 
-export type TipoMovimientoImpresora = "Compra" | "Compra Económica" | "Recarga" | "Reset" | "Otro";
+// "Transferencia" y "Baja" no son elegibles a mano en "Registrar movimiento"
+// (ver TIPOS_MOVIMIENTO_IMPRESORA más abajo) — se generan solos cuando se
+// mueve una impresora de tienda o se le da de baja, para que quede el
+// registro en el historial.
+export type TipoMovimientoImpresora =
+  | "Compra"
+  | "Compra Económica"
+  | "Recarga"
+  | "Reset"
+  | "Otro"
+  | "Transferencia"
+  | "Baja";
 
 export const TIPOS_MOVIMIENTO_IMPRESORA: TipoMovimientoImpresora[] = [
   "Compra",
@@ -341,4 +356,4 @@ export function seedInitialData() {
   if (changed) saveDB(data);
 }
 
-export const ESTADOS_ACTIVO: EstadoActivo[] = ["Nuevo", "Bueno", "Regular", "Dañado", "Irreparable", "Baja"];
+export const ESTADOS_ACTIVO: EstadoActivo[] = ["Nuevo", "Bueno", "Malo", "Baja"];

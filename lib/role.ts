@@ -1,34 +1,39 @@
-// Simulación del sistema de roles mientras no hay Supabase Auth conectado.
-// Cuando se conecte Supabase, esto se reemplaza por la sesión real
-// (auth.users + tabla `roles`) y por políticas de Row Level Security.
+"use client";
+
+// Rol activo (admin/usuario), leído ahora desde la tabla public.users de
+// Supabase en vez de localStorage. El rol lo asigna el trigger al
+// registrarse (primer usuario del proyecto = admin, el resto = usuario), o
+// lo puede cambiar un admin más adelante desde Usuarios.
 
 import { useEffect, useState } from "react";
+import { supabase } from "./supabase";
 import type { RolUsuario } from "./db";
 
-const ROLE_KEY = "inventarioLY25_rolActivo";
-
-export function getRolActivo(): RolUsuario {
-  if (typeof window === "undefined") return "admin";
-  return (window.localStorage.getItem(ROLE_KEY) as RolUsuario) || "admin";
-}
-
-export function setRolActivo(rol: RolUsuario) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(ROLE_KEY, rol);
-  window.dispatchEvent(new Event("rol-changed"));
-}
+export type { RolUsuario };
 
 export function useRolActivo() {
-  const [rol, setRol] = useState<RolUsuario>("admin");
+  const [rol, setRol] = useState<RolUsuario>("usuario");
 
   useEffect(() => {
-    setRol(getRolActivo());
-    const onChange = () => setRol(getRolActivo());
-    window.addEventListener("rol-changed", onChange);
-    window.addEventListener("storage", onChange);
+    let activo = true;
+
+    async function cargar(userId: string | undefined) {
+      if (!userId) {
+        if (activo) setRol("usuario");
+        return;
+      }
+      const { data } = await supabase.from("users").select("role_id").eq("id", userId).single();
+      if (activo) setRol((data?.role_id as RolUsuario) || "usuario");
+    }
+
+    supabase.auth.getSession().then(({ data }) => cargar(data.session?.user.id));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      cargar(session?.user.id);
+    });
+
     return () => {
-      window.removeEventListener("rol-changed", onChange);
-      window.removeEventListener("storage", onChange);
+      activo = false;
+      sub.subscription.unsubscribe();
     };
   }, []);
 

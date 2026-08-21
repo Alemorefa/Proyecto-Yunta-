@@ -3,10 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Bell, Menu, Search, User, Settings, LogOut, Sun, Moon } from "lucide-react";
+import { Bell, Menu, Search, User, Settings, LogOut, Keyboard } from "lucide-react";
 import { useSesionDisplay } from "@/lib/session";
-import { useTema } from "@/lib/theme";
-import { getDB, useUltimaEscritura } from "@/lib/db";
+import { cerrarSesion as cerrarSesionAuth } from "@/lib/auth";
+import { buscarGlobal, type ResultadoBusqueda } from "@/lib/busqueda-global";
+import { PreferenciasDialog } from "./preferencias-dialog";
+import { AtajosDialog } from "./atajos-dialog";
+import { ATAJOS } from "@/lib/atajos";
+import { useRolActivo } from "@/lib/role";
+import { cargarDatosToner, impresorasConTonerAgotado, marcarAlertasVistas, type ImpresoraAgotada } from "@/lib/toner";
 
 const TITLES: Record<string, string> = {
   "/": "Inicio",
@@ -20,63 +25,6 @@ const TITLES: Record<string, string> = {
   "/configuracion": "Configuración",
 };
 
-type ResultadoBusqueda = {
-  tipo: string;
-  label: string;
-  sub?: string;
-  href: string;
-};
-
-function buscarGlobal(termino: string): ResultadoBusqueda[] {
-  const q = termino.trim().toLowerCase();
-  if (!q) return [];
-  const db = getDB();
-  const resultados: ResultadoBusqueda[] = [];
-
-  for (const a of db.activos) {
-    if (resultados.length >= 6) break;
-    const coincide =
-      a.nombre.toLowerCase().includes(q) ||
-      a.codigo_interno.toLowerCase().includes(q) ||
-      (a.descripcion || "").toLowerCase().includes(q);
-    if (coincide) {
-      resultados.push({
-        tipo: "Activo",
-        label: a.nombre,
-        sub: a.codigo_interno,
-        href: `/inventario?buscar=${encodeURIComponent(a.codigo_interno)}`,
-      });
-    }
-  }
-
-  for (const t of db.tiendas) {
-    if (resultados.length >= 6) break;
-    if (t.nombre.toLowerCase().includes(q) || t.codigo.toLowerCase().includes(q)) {
-      resultados.push({ tipo: "Tienda", label: t.nombre, sub: t.codigo, href: "/tiendas" });
-    }
-  }
-
-  for (const i of db.impresoras) {
-    if (resultados.length >= 6) break;
-    if (i.modelo.toLowerCase().includes(q)) {
-      resultados.push({ tipo: "Impresora", label: i.modelo, href: "/impresoras" });
-    }
-  }
-
-  return resultados;
-}
-
-function formatoSincronizado(ultima: number | null, ahora: number): string {
-  if (!ultima) return "Sin cambios guardados aún";
-  const segundos = Math.max(0, Math.round((ahora - ultima) / 1000));
-  if (segundos < 5) return "Sincronizado ahora";
-  if (segundos < 60) return `Sincronizado hace ${segundos}s`;
-  const minutos = Math.round(segundos / 60);
-  if (minutos < 60) return `Sincronizado hace ${minutos}m`;
-  const horas = Math.round(minutos / 60);
-  return `Sincronizado hace ${horas}h`;
-}
-
 export function Topbar({
   pathname,
   onAbrirMenu,
@@ -86,25 +34,87 @@ export function Topbar({
 }) {
   const router = useRouter();
   const sesion = useSesionDisplay();
-  const { tema, alternar } = useTema();
-  const ultimaEscritura = useUltimaEscritura();
+  const { esAdmin } = useRolActivo();
 
-  const [ahora, setAhora] = useState(() => Date.now());
   const [busqueda, setBusqueda] = useState("");
   const [resultados, setResultados] = useState<ResultadoBusqueda[]>([]);
   const [buscadorAbierto, setBuscadorAbierto] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [preferenciasAbiertas, setPreferenciasAbiertas] = useState(false);
+  const [atajosAbiertos, setAtajosAbiertos] = useState(false);
+
+  // Avisos de tóner agotado. Se calculan al vuelo (no se guardan): se leen
+  // las impresoras y sus movimientos y se compara contra los días de
+  // duración configurados. Ver lib/toner.ts.
+  const [tonerAgotado, setTonerAgotado] = useState<ImpresoraAgotada[]>([]);
+  const [avisosAbiertos, setAvisosAbiertos] = useState(false);
 
   const buscadorRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const avisosRef = useRef<HTMLDivElement>(null);
+  const busquedaIdRef = useRef(0);
 
-  // Refresca el indicador "Sincronizado hace Xs" cada segundo.
+  // Escucha global de atajos de teclado (N, T, B, H) y despliegue al mantener presionado SHIFT
   useEffect(() => {
-    const t = setInterval(() => setAhora(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
+    let shiftHeld = false;
 
-  // Cierra buscador/menú de usuario al hacer click afuera.
+    function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const escribiendo =
+        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
+      if (escribiendo) return;
+
+      // Si presiona la tecla Shift sola, mostrar el diálogo de cuadritos
+      if (e.key === "Shift" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        if (!shiftHeld) {
+          shiftHeld = true;
+          setAtajosAbiertos(true);
+        }
+        return;
+      }
+
+      if (e.ctrlKey || e.metaKey) return;
+
+      const key = e.key.toLowerCase();
+      const atajo = ATAJOS.find((a) => a.tecla.toLowerCase() === key);
+      if (!atajo) return;
+      if (atajo.soloAdmin && !esAdmin) return;
+
+      e.preventDefault();
+      shiftHeld = false;
+      setAtajosAbiertos(false);
+      toast.info(`Acceso rápido: ${atajo.label} (${atajo.tecla})`);
+      router.push(atajo.href);
+    }
+
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.key === "Shift") {
+        if (shiftHeld) {
+          shiftHeld = false;
+          setAtajosAbiertos(false);
+        }
+      }
+    }
+
+    function onBlur() {
+      if (shiftHeld) {
+        shiftHeld = false;
+        setAtajosAbiertos(false);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, [esAdmin, router]);
+
+  // Cierra buscador/menú de usuario/avisos al hacer click afuera.
   useEffect(() => {
     function onClick(e: MouseEvent) {
       if (buscadorRef.current && !buscadorRef.current.contains(e.target as Node)) {
@@ -113,15 +123,49 @@ export function Topbar({
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuAbierto(false);
       }
+      if (avisosRef.current && !avisosRef.current.contains(e.target as Node)) {
+        setAvisosAbiertos(false);
+      }
     }
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
+  // Revisa el tóner al entrar y cada vez que se cambia de pantalla, así el
+  // aviso se actualiza apenas se registra una recarga.
+  useEffect(() => {
+    let vivo = true;
+    cargarDatosToner()
+      .then(({ impresoras, movimientos, diasEstimados }) => {
+        if (!vivo) return;
+        setTonerAgotado(impresorasConTonerAgotado(impresoras, movimientos, diasEstimados));
+      })
+      // Silencioso a propósito: si falla, simplemente no se muestra el aviso
+      // (no tiene sentido molestar con un toast de error en cada pantalla).
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [pathname]);
+
+  // Al abrir la campana, los avisos quedan marcados como vistos para que el
+  // cron diario no mande además un mail por lo mismo. Solo un admin puede
+  // escribir en toner_alertas (RLS), y es a quien va dirigido el aviso.
+  function alternarAvisos() {
+    const abriendo = !avisosAbiertos;
+    setAvisosAbiertos(abriendo);
+    if (abriendo && esAdmin && tonerAgotado.length > 0) {
+      marcarAlertasVistas(tonerAgotado, sesion.usuarioId ?? null).catch(() => {});
+    }
+  }
+
   function onBuscar(valor: string) {
     setBusqueda(valor);
-    setResultados(buscarGlobal(valor));
     setBuscadorAbierto(true);
+    const idBusqueda = ++busquedaIdRef.current;
+    buscarGlobal(valor).then((r) => {
+      if (idBusqueda === busquedaIdRef.current) setResultados(r);
+    });
   }
 
   function irAResultado(r: ResultadoBusqueda) {
@@ -130,29 +174,30 @@ export function Topbar({
     router.push(r.href);
   }
 
-  function cerrarSesion() {
+  async function cerrarSesion() {
     setMenuAbierto(false);
-    toast.info("Cerrar sesión estará disponible cuando conectemos autenticación real (Supabase Auth).");
+    await cerrarSesionAuth();
+    toast.info("Sesión cerrada");
   }
 
   const inicial = sesion.nombre.trim().charAt(0).toUpperCase() || "?";
 
   return (
-    <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur md:px-8">
-      <div className="flex items-center gap-3">
-        <button
-          className="rounded-full p-2 text-muted-foreground hover:bg-muted nav:hidden"
-          aria-label="Abrir menú"
-          onClick={onAbrirMenu}
-        >
-          <Menu className="h-5 w-5" />
-        </button>
-        <h2 className="text-lg font-semibold text-foreground">{TITLES[pathname] ?? ""}</h2>
-      </div>
+    <header className="sticky top-0 z-30 flex items-center gap-2 border-b bg-background/95 px-3 py-3 backdrop-blur sm:gap-3 md:px-8">
+      <button
+        className="shrink-0 rounded-full p-2 text-muted-foreground hover:bg-muted nav:hidden"
+        aria-label="Abrir menú"
+        onClick={onAbrirMenu}
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+      <h2 className="max-w-[30vw] shrink-0 truncate text-base font-semibold text-foreground sm:max-w-none sm:text-lg">
+        {TITLES[pathname] ?? ""}
+      </h2>
 
-      <div className="flex items-center gap-2 sm:gap-4">
+      <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.5 sm:flex-none sm:gap-4">
         {/* Buscador global */}
-        <div ref={buscadorRef} className="relative">
+        <div ref={buscadorRef} className="relative min-w-0 flex-1 sm:flex-none">
           <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-2.5 py-1.5">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
             <input
@@ -160,14 +205,14 @@ export function Topbar({
               onChange={(e) => onBuscar(e.target.value)}
               onFocus={() => setBuscadorAbierto(true)}
               placeholder="Buscar..."
-              className="w-24 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground sm:w-40 md:w-56"
+              className="w-full min-w-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground sm:w-40 md:w-56"
             />
           </div>
 
           {buscadorAbierto && busqueda.trim() && (
-            <div className="absolute right-0 top-11 z-50 w-72 overflow-hidden rounded-lg border bg-card shadow-lg">
+            <div className="absolute right-0 top-11 z-50 w-72 max-w-[85vw] overflow-hidden rounded-lg border bg-card shadow-lg">
               {resultados.length === 0 ? (
-                <p className="px-3 py-3 text-sm text-muted-foreground">Sin resultados para "{busqueda}"</p>
+                <p className="px-3 py-3 text-sm text-muted-foreground">Sin resultados para &quot;{busqueda}&quot;</p>
               ) : (
                 resultados.map((r, i) => (
                   <button
@@ -184,37 +229,78 @@ export function Topbar({
           )}
         </div>
 
-        {/* Indicador de "sincronización" (guardado local) */}
+        {/* Indicador de conexión: los datos viven en Supabase, no en este navegador */}
         <span className="hidden shrink-0 items-center gap-1.5 text-xs text-muted-foreground md:flex">
           <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-          {formatoSincronizado(ultimaEscritura, ahora)}
+          Conectado
         </span>
 
-        {/* Botón directo para alternar modo oscuro/claro */}
-        <button
-          onClick={alternar}
-          className="rounded-lg border p-2 text-muted-foreground hover:bg-muted"
-          aria-label="Alternar modo oscuro"
-          title={tema === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-        >
-          {tema === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-        </button>
+        {/* Avisos de tóner agotado */}
+        <div ref={avisosRef} className="relative shrink-0">
+          <button
+            onClick={alternarAvisos}
+            className="relative rounded-full p-2 text-muted-foreground hover:bg-muted"
+            aria-label={
+              tonerAgotado.length > 0
+                ? `${tonerAgotado.length} impresora(s) con tóner agotado`
+                : "Sin avisos"
+            }
+          >
+            <Bell className="h-5 w-5" />
+            {tonerAgotado.length > 0 && (
+              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                {tonerAgotado.length}
+              </span>
+            )}
+          </button>
 
-        <button
-          className="relative rounded-full p-2 text-muted-foreground hover:bg-muted"
-          aria-label="Notificaciones"
-        >
-          <Bell className="h-5 w-5" />
-        </button>
+          {avisosAbiertos && (
+            <div className="absolute right-0 top-12 z-50 w-72 max-w-[85vw] overflow-hidden rounded-lg border bg-card shadow-lg">
+              <p className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Avisos
+              </p>
+              {tonerAgotado.length === 0 ? (
+                <p className="px-3 py-4 text-sm text-muted-foreground">
+                  No hay avisos por ahora.
+                </p>
+              ) : (
+                <>
+                  {tonerAgotado.map((a) => (
+                    <button
+                      key={a.impresora.id}
+                      onClick={() => {
+                        setAvisosAbiertos(false);
+                        router.push("/impresoras");
+                      }}
+                      className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-2 text-left last:border-b-0 hover:bg-muted"
+                    >
+                      <span className="text-sm font-medium text-foreground">
+                        Tóner agotado · {a.impresora.modelo}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        Pasaron {a.diasTranscurridos} días desde la última carga
+                      </span>
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Avatar + menú de usuario */}
-        <div ref={menuRef} className="relative border-l pl-2 sm:pl-4">
+        <div ref={menuRef} className="relative shrink-0 border-l pl-2 sm:pl-4">
           <button
             onClick={() => setMenuAbierto((v) => !v)}
             className="flex items-center gap-2 rounded-lg p-1 hover:bg-muted"
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--navy-800)] text-sm font-semibold text-white">
-              {inicial}
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--navy-800)] text-sm font-semibold text-white">
+              {sesion.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={sesion.avatarUrl} alt={sesion.nombre} className="h-full w-full object-cover" />
+              ) : (
+                inicial
+              )}
             </div>
             <p className="hidden text-sm font-semibold text-foreground sm:block">{sesion.nombre}</p>
           </button>
@@ -224,21 +310,21 @@ export function Topbar({
               <button
                 onClick={() => {
                   setMenuAbierto(false);
-                  router.push("/configuracion");
+                  setPreferenciasAbiertas(true);
                 }}
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
               >
-                <User className="h-4 w-4" /> Perfil
+                <Settings className="h-4 w-4" /> Preferencias
               </button>
 
               <button
                 onClick={() => {
                   setMenuAbierto(false);
-                  toast.info("Más preferencias próximamente. El modo oscuro ya está disponible en el botón del sol/luna.");
+                  setAtajosAbiertos(true);
                 }}
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
               >
-                <Settings className="h-4 w-4" /> Preferencias
+                <Keyboard className="h-4 w-4" /> Atajos
               </button>
 
               <div className="my-1 border-t" />
@@ -253,6 +339,10 @@ export function Topbar({
           )}
         </div>
       </div>
+
+      <PreferenciasDialog open={preferenciasAbiertas} onOpenChange={setPreferenciasAbiertas} />
+      <AtajosDialog open={atajosAbiertos} onOpenChange={setAtajosAbiertos} />
     </header>
   );
 }
+

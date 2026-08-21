@@ -16,27 +16,48 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Pencil, Plus, Power, X } from "lucide-react";
-import { getDB, saveDB, idGen, now, type Tienda, type DB } from "@/lib/db";
 import { useRolActivo } from "@/lib/role";
+import {
+  listarTiendas,
+  listarSectores,
+  crearTienda,
+  actualizarTienda,
+  cambiarEstadoTienda,
+  crearSectores,
+  borrarSectores,
+  contarActivosPorTienda,
+  contarActivosPorSectores,
+  type Tienda,
+  type Sector,
+} from "@/lib/catalogos";
 
 const TIENDA_VACIA = { nombre: "", codigo: "", direccion: "", responsable: "", observaciones: "" };
 
 export default function TiendasPage() {
-  const [data, setData] = useState<DB | null>(null);
+  const [tiendas, setTiendas] = useState<Tienda[] | null>(null);
+  const [sectores, setSectores] = useState<Sector[]>([]);
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(TIENDA_VACIA);
   const [sectoresForm, setSectoresForm] = useState<string[]>([]);
   const [nuevoSector, setNuevoSector] = useState("");
+  const [guardando, setGuardando] = useState(false);
   const { esAdmin } = useRolActivo();
 
+  async function cargar() {
+    const [t, s] = await Promise.all([listarTiendas(), listarSectores()]);
+    setTiendas(t);
+    setSectores(s);
+  }
+
   useEffect(() => {
-    setData(getDB());
+    cargar().catch((err) => toast.error("No se pudieron cargar las tiendas: " + (err as Error).message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!data) return null;
+  if (!tiendas) return null;
 
-  const sectoresDe = (tiendaId: string) => data.sectores.filter((s) => s.tienda_id === tiendaId);
+  const sectoresDe = (tiendaId: string) => sectores.filter((s) => s.store_id === tiendaId);
 
   function abrirNueva() {
     setEditId(null);
@@ -58,100 +79,78 @@ export default function TiendasPage() {
     setOpen(true);
   }
 
-  function guardar() {
+  async function guardar() {
     if (!form.nombre.trim() || !form.codigo.trim()) {
       toast.error("Nombre y código son obligatorios");
       return;
     }
-    const db = getDB();
-    let tiendaId = editId;
 
-    // Si estamos editando, chequeamos qué sectores se van a quitar (existían
-    // antes y ya no están en el formulario) y si tienen ítems asignados.
-    if (editId) {
-      const sectoresActuales = db.sectores.filter((s) => s.tienda_id === editId);
-      const nombresNuevos = new Set(sectoresForm.map((n) => n.trim().toLowerCase()));
-      const sectoresAEliminar = sectoresActuales.filter(
-        (s) => !nombresNuevos.has(s.nombre.trim().toLowerCase())
-      );
-      const idsAEliminar = new Set(sectoresAEliminar.map((s) => s.id));
-      const activosAfectados = db.activos.filter(
-        (a) => a.sector_id && idsAEliminar.has(a.sector_id) && a.estado !== "Baja"
-      ).length;
-      if (activosAfectados > 0) {
-        const confirmado = confirm(
-          `Vas a quitar ${sectoresAEliminar.length} sector(es) que tienen ${activosAfectados} ítem(s) de ` +
-          `inventario asignados. Esos ítems van a quedar sin sector. ¿Continuar?`
-        );
-        if (!confirmado) return;
+    setGuardando(true);
+    try {
+      if (editId) {
+        // Si estamos editando, nos fijamos qué sectores se van a quitar
+        // (existían antes y ya no están en el formulario) y si tienen
+        // ítems de inventario asignados, para avisar antes de borrarlos.
+        const sectoresActuales = sectoresDe(editId);
+        const nombresNuevos = new Set(sectoresForm.map((n) => n.trim().toLowerCase()));
+        const sectoresAEliminar = sectoresActuales.filter((s) => !nombresNuevos.has(s.nombre.trim().toLowerCase()));
+
+        if (sectoresAEliminar.length > 0) {
+          const activosAfectados = await contarActivosPorSectores(sectoresAEliminar.map((s) => s.id));
+          if (activosAfectados > 0) {
+            const confirmado = confirm(
+              `Vas a quitar ${sectoresAEliminar.length} sector(es) que tienen ${activosAfectados} ítem(s) de ` +
+                `inventario asignados. Esos ítems van a quedar sin sector. ¿Continuar?`
+            );
+            if (!confirmado) {
+              setGuardando(false);
+              return;
+            }
+          }
+        }
+
+        await actualizarTienda(editId, form);
+        if (sectoresAEliminar.length > 0) await borrarSectores(sectoresAEliminar.map((s) => s.id));
+
+        const nombresExistentes = new Set(sectoresActuales.map((s) => s.nombre.trim().toLowerCase()));
+        const sectoresACrear = sectoresForm.filter((n) => !nombresExistentes.has(n.trim().toLowerCase()));
+        if (sectoresACrear.length > 0) await crearSectores(editId, sectoresACrear);
+
+        toast.success("Tienda actualizada");
+      } else {
+        const nueva = await crearTienda(form);
+        if (sectoresForm.length > 0) await crearSectores(nueva.id, sectoresForm);
+        toast.success("Tienda creada");
       }
+
+      await cargar();
+      setOpen(false);
+    } catch (err) {
+      toast.error("No se pudo guardar la tienda: " + (err as Error).message);
+    } finally {
+      setGuardando(false);
     }
-
-    if (editId) {
-      const idx = db.tiendas.findIndex((t) => t.id === editId);
-      if (idx !== -1) {
-        db.tiendas[idx] = { ...db.tiendas[idx], ...form };
-      }
-      toast.success("Tienda actualizada");
-    } else {
-      const nueva: Tienda = {
-        id: idGen(),
-        estado: "activa",
-        fecha_creacion: now(),
-        ...form,
-      };
-      db.tiendas.push(nueva);
-      tiendaId = nueva.id;
-      toast.success("Tienda creada");
-    }
-
-    if (tiendaId) {
-      // Conservamos el id de los sectores que ya existían (por nombre) para
-      // no romper los ítems que ya los tenían asignados; solo se generan ids
-      // nuevos para sectores realmente nuevos.
-      const sectoresExistentes = db.sectores.filter((s) => s.tienda_id === tiendaId);
-      const existentesPorNombre = new Map(
-        sectoresExistentes.map((s) => [s.nombre.trim().toLowerCase(), s])
-      );
-      const nuevaLista = sectoresForm.map(
-        (nombre) => existentesPorNombre.get(nombre.trim().toLowerCase()) || { id: idGen(), tienda_id: tiendaId as string, nombre }
-      );
-      db.sectores = db.sectores.filter((s) => s.tienda_id !== tiendaId).concat(nuevaLista);
-
-      const idsFinales = new Set(nuevaLista.map((s) => s.id));
-      db.activos = db.activos.map((a) =>
-        a.tienda_id === tiendaId && a.sector_id && !idsFinales.has(a.sector_id)
-          ? { ...a, sector_id: null }
-          : a
-      );
-    }
-
-    saveDB(db);
-    setData(db);
-    setOpen(false);
   }
 
-  function toggleEstado(t: Tienda) {
+  async function toggleEstado(t: Tienda) {
     const vaAInactiva = t.estado === "activa";
     if (vaAInactiva) {
-      const activosAsignados = data.activos.filter(
-        (a) => a.tienda_id === t.id && a.estado !== "Baja"
-      ).length;
+      const activosAsignados = await contarActivosPorTienda(t.id);
       if (activosAsignados > 0) {
         const confirmado = confirm(
           `"${t.nombre}" tiene ${activosAsignados} ítem(s) de inventario asignados. ` +
-          `Si la desactivás van a seguir apareciendo ahí pero la tienda no se va a poder elegir para altas nuevas. ¿Continuar?`
+            `Si la desactivás van a seguir apareciendo ahí pero la tienda no se va a poder elegir para altas nuevas. ¿Continuar?`
         );
         if (!confirmado) return;
       }
     }
-    const db = getDB();
-    const idx = db.tiendas.findIndex((x) => x.id === t.id);
-    if (idx === -1) return;
-    db.tiendas[idx].estado = vaAInactiva ? "inactiva" : "activa";
-    saveDB(db);
-    setData(db);
-    toast.success(`Tienda ${db.tiendas[idx].estado === "activa" ? "activada" : "desactivada"}`);
+    try {
+      await cambiarEstadoTienda(t.id, vaAInactiva ? "inactiva" : "activa");
+      await cargar();
+      toast.success(`Tienda ${vaAInactiva ? "desactivada" : "activada"}`);
+    } catch (err) {
+      toast.error("No se pudo cambiar el estado: " + (err as Error).message);
+    }
   }
 
   function agregarSector() {
@@ -162,7 +161,7 @@ export default function TiendasPage() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-semibold">Gestión de Tiendas</h3>
         {esAdmin && (
           <Button onClick={abrirNueva}>
@@ -178,6 +177,7 @@ export default function TiendasPage() {
               <TableRow>
                 <TableHead>Código</TableHead>
                 <TableHead>Nombre</TableHead>
+                <TableHead>Dirección</TableHead>
                 <TableHead>Responsable</TableHead>
                 <TableHead>Sectores</TableHead>
                 <TableHead>Estado</TableHead>
@@ -185,17 +185,18 @@ export default function TiendasPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.tiendas.length === 0 && (
+              {tiendas.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     No hay tiendas registradas
                   </TableCell>
                 </TableRow>
               )}
-              {data.tiendas.map((t) => (
+              {tiendas.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell className="font-mono text-xs">{t.codigo}</TableCell>
                   <TableCell>{t.nombre}</TableCell>
+                  <TableCell className="text-muted-foreground">{t.direccion || "-"}</TableCell>
                   <TableCell>{t.responsable || "-"}</TableCell>
                   <TableCell>{sectoresDe(t.id).length}</TableCell>
                   <TableCell>
@@ -226,7 +227,7 @@ export default function TiendasPage() {
             <DialogTitle>{editId ? "Editar Tienda" : "Nueva Tienda"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor="nombre">Nombre</Label>
                 <Input id="nombre" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
@@ -277,7 +278,9 @@ export default function TiendasPage() {
             <Button variant="secondary" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={guardar}>Guardar</Button>
+            <Button onClick={guardar} disabled={guardando}>
+              {guardando ? "Guardando..." : "Guardar"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

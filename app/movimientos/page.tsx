@@ -9,15 +9,17 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { ESTADOS_ACTIVO, type EstadoActivo } from "@/lib/db";
+import { listarTiendas, listarSectores, listarCategorias, type Tienda, type Sector, type Categoria } from "@/lib/catalogos";
 import {
-  getDB,
-  saveDB,
-  now,
-  registrarMovimiento,
-  ESTADOS_ACTIVO,
-  type DB,
-  type EstadoActivo,
-} from "@/lib/db";
+  listarActivos,
+  transferirActivo,
+  cambiarEstadoActivo,
+  darDeBajaActivo,
+  registrarMovimientoActivo,
+  type Activo,
+} from "@/lib/inventario-data";
+import { moverImpresoraDeTienda, cambiarEstadoImpresora } from "@/lib/impresoras-data";
 import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
 
@@ -31,12 +33,19 @@ const ACCION_POR_PARAM: Record<string, TipoAccion> = {
 
 function MovimientosContenido() {
   const searchParams = useSearchParams();
-  const [data, setData] = useState<DB | null>(null);
+  const [activos, setActivos] = useState<Activo[] | null>(null);
+  const [tiendas, setTiendas] = useState<Tienda[]>([]);
+  const [sectores, setSectores] = useState<Sector[]>([]);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [busqueda, setBusqueda] = useState("");
+  const [filtroTienda, setFiltroTienda] = useState("todas");
+  const [filtroSector, setFiltroSector] = useState("todos");
+  const [filtroCategoria, setFiltroCategoria] = useState("todas");
   const [activoId, setActivoId] = useState("");
   const [accion, setAccion] = useState<TipoAccion>(
     ACCION_POR_PARAM[searchParams.get("accion") || ""] || "Transferencia"
   );
+  const [guardando, setGuardando] = useState(false);
 
   const [tiendaDestino, setTiendaDestino] = useState("");
   const [sectorDestino, setSectorDestino] = useState("");
@@ -46,79 +55,105 @@ function MovimientosContenido() {
   const { esAdmin } = useRolActivo();
   const sesion = useSesionDisplay();
 
+  async function cargar() {
+    const [a, t, s, c] = await Promise.all([listarActivos(), listarTiendas(), listarSectores(), listarCategorias()]);
+    setActivos(a);
+    setTiendas(t);
+    setSectores(s);
+    setCategorias(c);
+  }
+
   useEffect(() => {
-    setData(getDB());
+    cargar().catch((err) => toast.error("No se pudo cargar: " + (err as Error).message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const resultados = useMemo(() => {
-    if (!data) return [];
+    if (!activos) return [];
     const q = busqueda.trim().toLowerCase();
-    const activos = data.activos.filter((a) => a.estado !== "Baja");
-    if (!q) return activos.slice(0, 8);
-    return activos
+    let activosVivos = activos.filter((a) => a.estado !== "Baja");
+    if (filtroTienda !== "todas") activosVivos = activosVivos.filter((a) => a.store_id === filtroTienda);
+    if (filtroSector !== "todos") activosVivos = activosVivos.filter((a) => a.sector_id === filtroSector);
+    if (filtroCategoria !== "todas") activosVivos = activosVivos.filter((a) => a.category_id === filtroCategoria);
+    if (!q) return activosVivos.slice(0, 8);
+    return activosVivos
       .filter((a) => a.nombre.toLowerCase().includes(q) || a.codigo_interno.toLowerCase().includes(q))
       .slice(0, 8);
-  }, [data, busqueda]);
+  }, [activos, busqueda, filtroTienda, filtroSector, filtroCategoria]);
 
-  if (!data) return null;
+  if (!activos) return null;
 
-  const activoSeleccionado = data.activos.find((a) => a.id === activoId);
-  const sectoresDeTienda = (tiendaId: string) => data.sectores.filter((s) => s.tienda_id === tiendaId);
+  const activoSeleccionado = activos.find((a) => a.id === activoId);
+  const sectoresDeTienda = (tiendaId: string) => sectores.filter((s) => s.store_id === tiendaId);
+  const sectoresDeFiltro = filtroTienda === "todas" ? sectores : sectoresDeTienda(filtroTienda);
 
-  function ejecutar() {
+  async function ejecutar() {
     if (!activoSeleccionado) {
       toast.error("Selecciona un activo");
       return;
     }
-    const db = getDB();
-    const idx = db.activos.findIndex((a) => a.id === activoSeleccionado.id);
-    if (idx === -1) return;
+    setGuardando(true);
+    try {
+      if (accion === "Transferencia") {
+        if (!tiendaDestino) {
+          toast.error("Selecciona la tienda destino");
+          setGuardando(false);
+          return;
+        }
+        const origenTienda = activoSeleccionado.store_id;
+        const origenSector = activoSeleccionado.sector_id;
+        await transferirActivo(activoSeleccionado.id, { store_id: tiendaDestino, sector_id: sectorDestino || null });
+        await registrarMovimientoActivo({
+          activo_id: activoSeleccionado.id,
+          accion: "Transferencia",
+          observacion: observacion || "Transferencia de activo",
+          store_origen_id: origenTienda,
+          store_destino_id: tiendaDestino,
+          sector_origen_id: origenSector,
+          sector_destino_id: sectorDestino || null,
+          usuario_id: sesion.usuarioId ?? null,
+        });
+        if (activoSeleccionado.printer_id && origenTienda !== tiendaDestino) {
+          await moverImpresoraDeTienda(activoSeleccionado.printer_id, tiendaDestino);
+        }
+        toast.success("Transferencia registrada");
+      } else if (accion === "Cambio de estado") {
+        await cambiarEstadoActivo(activoSeleccionado.id, estadoNuevo);
+        await registrarMovimientoActivo({
+          activo_id: activoSeleccionado.id,
+          accion: "Cambio de estado",
+          observacion: observacion || `Nuevo estado: ${estadoNuevo}`,
+          usuario_id: sesion.usuarioId ?? null,
+        });
+        toast.success("Estado actualizado");
+      } else {
+        if (!observacion.trim()) {
+          toast.error("Indica el motivo de la baja");
+          setGuardando(false);
+          return;
+        }
+        await darDeBajaActivo(activoSeleccionado.id, observacion);
+        await registrarMovimientoActivo({
+          activo_id: activoSeleccionado.id,
+          accion: "Baja",
+          observacion: observacion.trim(),
+          usuario_id: sesion.usuarioId ?? null,
+        });
+        if (activoSeleccionado.printer_id) {
+          await cambiarEstadoImpresora(activoSeleccionado.printer_id, false);
+        }
+        toast.success("Activo dado de baja");
+      }
 
-    if (accion === "Transferencia") {
-      if (!tiendaDestino) { toast.error("Selecciona la tienda destino"); return; }
-      const origenTienda = db.activos[idx].tienda_id;
-      const origenSector = db.activos[idx].sector_id;
-      db.activos[idx].tienda_id = tiendaDestino;
-      db.activos[idx].sector_id = sectorDestino || null;
-      registrarMovimiento(db, {
-        activo_id: activoSeleccionado.id,
-        accion: "Transferencia",
-        observacion: observacion || "Transferencia de activo",
-        tienda_origen_id: origenTienda,
-        tienda_destino_id: tiendaDestino,
-        sector_origen_id: origenSector,
-        sector_destino_id: sectorDestino || null,
-        usuario: sesion.nombre,
-      });
-      toast.success("Transferencia registrada");
-    } else if (accion === "Cambio de estado") {
-      db.activos[idx].estado = estadoNuevo;
-      registrarMovimiento(db, {
-        activo_id: activoSeleccionado.id,
-        accion: "Cambio de estado",
-        observacion: observacion || `Nuevo estado: ${estadoNuevo}`,
-        usuario: sesion.nombre,
-      });
-      toast.success("Estado actualizado");
-    } else {
-      if (!observacion.trim()) { toast.error("Indica el motivo de la baja"); return; }
-      db.activos[idx].estado = "Baja";
-      db.activos[idx].fecha_baja = now();
-      db.activos[idx].motivo_baja = observacion.trim();
-      registrarMovimiento(db, {
-        activo_id: activoSeleccionado.id,
-        accion: "Baja",
-        observacion: observacion.trim(),
-        usuario: sesion.nombre,
-      });
-      toast.success("Activo dado de baja");
+      await cargar();
+      setActivoId("");
+      setObservacion("");
+      setBusqueda("");
+    } catch (err) {
+      toast.error("No se pudo registrar el movimiento: " + (err as Error).message);
+    } finally {
+      setGuardando(false);
     }
-
-    saveDB(db);
-    setData(db);
-    setActivoId("");
-    setObservacion("");
-    setBusqueda("");
   }
 
   if (!esAdmin) {
@@ -139,6 +174,37 @@ function MovimientosContenido() {
           <CardTitle className="text-base">1. Buscar activo</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Select value={filtroTienda} onValueChange={(v) => { setFiltroTienda(v); setFiltroSector("todos"); }}>
+              <SelectTrigger className="w-40"><SelectValue placeholder="Tienda" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas las tiendas</SelectItem>
+                {tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={filtroSector} onValueChange={setFiltroSector}>
+              <SelectTrigger className="w-40"><SelectValue placeholder="Sector" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos los sectores</SelectItem>
+                {sectoresDeFiltro.map((s) => <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
+              <SelectTrigger className="w-40"><SelectValue placeholder="Categoría" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas las categorías</SelectItem>
+                {categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {(filtroTienda !== "todas" || filtroSector !== "todos" || filtroCategoria !== "todas") && (
+              <Button
+                variant="secondary"
+                onClick={() => { setFiltroTienda("todas"); setFiltroSector("todos"); setFiltroCategoria("todas"); }}
+              >
+                Limpiar filtros
+              </Button>
+            )}
+          </div>
           <Input
             placeholder="Buscar por nombre o código interno..."
             value={busqueda}
@@ -195,7 +261,7 @@ function MovimientosContenido() {
                     <Select value={tiendaDestino} onValueChange={(v) => { setTiendaDestino(v); setSectorDestino(""); }}>
                       <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                       <SelectContent>
-                        {data.tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
+                        {tiendas.map((t) => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -217,7 +283,7 @@ function MovimientosContenido() {
                   <Select value={estadoNuevo} onValueChange={(v) => setEstadoNuevo(v as EstadoActivo)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {ESTADOS_ACTIVO.map((e) => <SelectItem key={e} value={e}>{e}</SelectItem>)}
+                      {ESTADOS_ACTIVO.filter((e) => e !== "Baja").map((e) => <SelectItem key={e} value={e}>{e}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -232,8 +298,9 @@ function MovimientosContenido() {
                 className="w-full"
                 variant={accion === "Baja" ? "destructive" : "default"}
                 onClick={ejecutar}
+                disabled={guardando}
               >
-                Confirmar {accion}
+                {guardando ? "Guardando..." : `Confirmar ${accion}`}
               </Button>
             </>
           )}
