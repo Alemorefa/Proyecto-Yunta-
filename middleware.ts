@@ -27,7 +27,10 @@ export function middleware(request: NextRequest) {
     // api.qrserver.com genera la imagen del QR para la etiqueta imprimible.
     `img-src 'self' data: blob: https://api.qrserver.com`,
     `font-src 'self' data:`,
-    `connect-src 'self' ${supabaseUrl} ${supabaseWs}`,
+    // dolarapi.com: la cotización oficial que trae el botón "Cotizar actual"
+    // de Configuración (ver lib/dolar.ts). Sin esto el navegador bloquea el
+    // pedido y el botón falla en silencio.
+    `connect-src 'self' ${supabaseUrl} ${supabaseWs} https://dolarapi.com`,
     // El escáner QR (html5-qrcode) decodifica en un web worker cargado
     // desde un blob: URL.
     `worker-src 'self' blob:`,
