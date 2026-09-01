@@ -93,8 +93,13 @@ export type ActivoInput = {
   es_comodato?: boolean;
 };
 
-function payloadDe(input: ActivoInput) {
-  return {
+function payloadDe(input: ActivoInput, incluirColumnaComodato = true) {
+  let obs = input.observaciones.trim();
+  if (input.es_comodato && !obs.toLowerCase().includes("comodato")) {
+    obs = obs ? `${obs} (En Comodato)` : "En Comodato";
+  }
+
+  const p: Record<string, unknown> = {
     codigo_interno: input.codigo_interno.trim(),
     nombre: input.nombre.trim(),
     descripcion: input.descripcion.trim() || null,
@@ -111,19 +116,34 @@ function payloadDe(input: ActivoInput) {
     store_id: input.tienda_id,
     sector_id: input.sector_id,
     responsable: input.responsable.trim() || null,
-    observaciones: input.observaciones.trim() || null,
-    es_comodato: !!input.es_comodato,
+    observaciones: obs || null,
   };
+
+  if (incluirColumnaComodato && input.es_comodato !== undefined) {
+    p.es_comodato = !!input.es_comodato;
+  }
+
+  return p;
 }
 
 export async function crearActivo(input: ActivoInput): Promise<Activo> {
-  const { data, error } = await supabase.from("assets").insert(payloadDe(input)).select().single();
+  let { data, error } = await supabase.from("assets").insert(payloadDe(input, true)).select().single();
+  if (error && error.message.includes("es_comodato")) {
+    const res = await supabase.from("assets").insert(payloadDe(input, false)).select().single();
+    data = res.data;
+    error = res.error;
+  }
   if (error) throw error;
   return data as Activo;
 }
 
 export async function actualizarActivo(id: string, input: ActivoInput): Promise<Activo> {
-  const { data, error } = await supabase.from("assets").update(payloadDe(input)).eq("id", id).select().single();
+  let { data, error } = await supabase.from("assets").update(payloadDe(input, true)).eq("id", id).select().single();
+  if (error && error.message.includes("es_comodato")) {
+    const res = await supabase.from("assets").update(payloadDe(input, false)).eq("id", id).select().single();
+    data = res.data;
+    error = res.error;
+  }
   if (error) throw error;
   return data as Activo;
 }

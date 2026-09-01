@@ -119,13 +119,28 @@ const MAPA_TIENDAS = {
   'Atuel Norte': { nombre: 'Atuel Norte', codigo: 'ANOR' },
 };
 
-function normalizarTienda(sheetName) {
-  if (MAPA_TIENDAS[sheetName]) return MAPA_TIENDAS[sheetName];
-  let limpio = sheetName.trim();
+function normalizarTienda(rawName) {
+  const s = String(rawName || '').trim();
+  const up = s.toUpperCase();
+  if (up.includes('BALLO')) return { nombre: 'Balloffet', codigo: 'BALL' };
+  if (up.includes('VELEZ')) return { nombre: 'Vélez', codigo: 'VELE' };
+  if (up.includes('CUADRO NAC') || up === 'CNAC') return { nombre: 'Cuadro Nacional', codigo: 'CNAC' };
+  if (up.includes('CUADRO BEN') || up === 'CBEN') return { nombre: 'Cuadro Benegas', codigo: 'CBEN' };
+  if (up.includes('LOGISTICA')) return { nombre: 'Logística', codigo: 'LOGI' };
+  if (up.includes('ALVEAR')) return { nombre: 'Alvear', codigo: 'ALVE' };
+  if (up.includes('LIBERTADOR')) return { nombre: 'Libertador', codigo: 'LIBE' };
+  if (up.includes('ATUEL')) return { nombre: 'Atuel Norte', codigo: 'ANOR' };
+  if (up.includes('ALBERDI') || up.includes('MONTOYA')) return { nombre: 'Alberdi 107', codigo: 'ALB1' };
+  if (up.includes('CENTRO')) return { nombre: 'Centro', codigo: 'CENT' };
+  if (up.includes('ALEM')) return { nombre: 'Alem', codigo: 'ALEM' };
+  if (up.includes('ADMIN') || up.includes('TESORERIA')) return { nombre: 'Administración y Tesorería', codigo: 'ADMI' };
+  
+  if (MAPA_TIENDAS[s]) return MAPA_TIENDAS[s];
+  let limpio = s;
   if (limpio.toUpperCase().startsWith('INV ')) limpio = limpio.slice(4).trim();
   const palabras = limpio.replace(/[^a-zA-Z0-9\s]/g, '').trim().split(/\s+/);
   const codigo = palabras.length === 1 ? palabras[0].slice(0, 4).toUpperCase() : palabras.map((p) => p[0]).join('').slice(0, 4).toUpperCase();
-  return { nombre: limpio, codigo };
+  return { nombre: limpio || 'General', codigo: codigo || 'GEN' };
 }
 
 function capitalizar(str) {
@@ -137,8 +152,9 @@ function formatearCategoria(str) {
   if (!str) return 'Muebles y Útiles';
   const limpio = str.replace(/[_\-/]+/g, ' ').trim();
   const upper = limpio.toUpperCase();
+  if (upper.includes('INFORMATICA') || upper.includes('TECNOLOGIA') || upper.includes('COMPUT')) return 'Informática y Tecnología';
   if (upper.includes('MUEBLE') || upper.includes('UTILES')) return 'Muebles y Útiles';
-  if (upper.includes('INSTALACION')) return 'Instalaciones';
+  if (upper.includes('INSTALACION') || upper.includes('EQUIPAMIENTO FIJO')) return 'Instalaciones';
   if (upper.includes('MAQ') || upper.includes('HERRAMIENTA')) return 'Maquinarias y Herramientas';
   if (upper.includes('RODADO') || upper.includes('VEHICULO')) return 'Rodados';
   if (upper.includes('COMMODATO') || upper.includes('COMODATO')) return 'Comodato';
@@ -290,6 +306,102 @@ function procesarHoja(ws, sheetName) {
 }
 
 // ---------------------------------------------------------------------------
+// 4.1 Parser de Hoja Consolidada
+// ---------------------------------------------------------------------------
+function procesarHojaConsolidada(sheet) {
+  const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  let headerIdx = -1;
+  for (let r = 0; r < Math.min(10, data.length); r++) {
+    const rowStr = (data[r] || []).join(' ').toLowerCase();
+    if (rowStr.includes('id activo') && (rowStr.includes('sucursal') || rowStr.includes('artículo') || rowStr.includes('rubro'))) {
+      headerIdx = r;
+      break;
+    }
+  }
+  if (headerIdx === -1) return null;
+
+  const header = data[headerIdx].map((c) => String(c).toLowerCase().trim());
+  const colSku = header.findIndex((h) => h.includes('id activo') || h.includes('código') || h === 'sku');
+  const colTienda = header.findIndex((h) => h.includes('sucursal') || h.includes('tienda'));
+  const colSector = header.findIndex((h) => h.includes('sector') || h.includes('ubicación') || h.includes('ubicacion'));
+  const colGranRubro = header.findIndex((h) => h.includes('gran rubro') || h.includes('rubro'));
+  const colCatPrin = header.findIndex((h) => h.includes('categoría principal') || h.includes('categoria principal'));
+  const colSubcat = header.findIndex((h) => h.includes('subcategoría') || h.includes('subcategoria'));
+  const colDesc = header.findIndex((h) => h.includes('artículo') || h.includes('articulo') || h.includes('descripción') || h.includes('descripcion'));
+  const colMarca = header.findIndex((h) => h.includes('marca'));
+  const colCant = header.findIndex((h) => h.includes('cant'));
+  const colPrecioUnit = header.findIndex((h) => h.includes('precio unitario (ars)') || (h.includes('precio') && h.includes('unit')));
+  const colPrecioTotArs = header.findIndex((h) => h.includes('precio total (ars)') || h.includes('total ars'));
+  const colPrecioTotUsd = header.findIndex((h) => h.includes('precio total (usd)') || h.includes('total usd') || h.includes('en dolares') || h.includes('en dólares'));
+  const colObs = header.findIndex((h) => h.includes('estado') || h.includes('observaciones'));
+  const colHojaOrig = header.findIndex((h) => h.includes('hoja origen'));
+
+  const items = [];
+  for (let r = headerIdx + 1; r < data.length; r++) {
+    const row = data[r];
+    if (!row || !row.some((x) => x !== '')) continue;
+    const descRaw = colDesc !== -1 ? String(row[colDesc] || '').trim() : '';
+    if (!descRaw) continue;
+
+    const skuRaw = colSku !== -1 ? String(row[colSku] || '').trim() : '';
+    const tiendaRaw = colTienda !== -1 ? String(row[colTienda] || '').trim() : '';
+    const sectorRaw = colSector !== -1 ? String(row[colSector] || '').trim() : 'General';
+    const granRubro = colGranRubro !== -1 ? String(row[colGranRubro] || '').trim() : '';
+    const catPrin = colCatPrin !== -1 ? String(row[colCatPrin] || '').trim() : '';
+    const subcat = colSubcat !== -1 ? String(row[colSubcat] || '').trim() : '';
+    const marcaRaw = colMarca !== -1 ? String(row[colMarca] || '').trim() : '';
+    const cant = colCant !== -1 ? Math.max(1, parseInt(row[colCant]) || 1) : 1;
+    
+    let precioUnit = colPrecioUnit !== -1 ? parsearPrecio(row[colPrecioUnit]) : 0;
+    const precioTotArs = colPrecioTotArs !== -1 ? parsearPrecio(row[colPrecioTotArs]) : 0;
+    if (!precioUnit && precioTotArs) {
+      precioUnit = precioTotArs / cant;
+    }
+
+    let precioTotUsd = colPrecioTotUsd !== -1 ? parsearPrecio(row[colPrecioTotUsd]) : 0;
+    let precioUnitUsd = precioTotUsd ? Math.round((precioTotUsd / cant) * 100) / 100 : (precioUnit ? Math.round((precioUnit / 1511.5) * 100) / 100 : 0);
+
+    const obsRaw = colObs !== -1 ? String(row[colObs] || '').trim() : '';
+    const hojaOrig = colHojaOrig !== -1 ? String(row[colHojaOrig] || '').trim() : '';
+
+    const tInfo = normalizarTienda(tiendaRaw);
+    const catFinal = formatearCategoria(granRubro || catPrin || 'Muebles y Útiles');
+
+    const esComodato = obsRaw.toLowerCase().includes('comodato') || descRaw.toLowerCase().includes('comodato');
+    let estado = 'Bueno';
+    if (obsRaw.toLowerCase().includes('inactivo') || obsRaw.toLowerCase().includes('desuso') || obsRaw.toLowerCase().includes('no funciona')) {
+      estado = 'Baja';
+    }
+
+    const detalles = [];
+    if (catPrin && catPrin !== catFinal) detalles.push(`Rubro: ${catPrin}`);
+    if (subcat) detalles.push(`Tipo: ${subcat}`);
+    if (obsRaw && obsRaw !== 'Estado: ACTIVO') detalles.push(obsRaw);
+    if (hojaOrig) detalles.push(`Origen: ${hojaOrig}`);
+
+    items.push({
+      hoja: 'Consolidado',
+      codigo_sugerido: skuRaw || null,
+      nombre: descRaw,
+      marca: (marcaRaw && marcaRaw !== 'Genérico / No especificado') ? marcaRaw : null,
+      categoria: catFinal,
+      subcategoria: subcat || null,
+      sector: sectorRaw || 'General',
+      cantidad: cant,
+      precio_ars: precioUnit,
+      precio_usd: precioUnitUsd,
+      estado,
+      es_comodato: esComodato,
+      observaciones: detalles.length > 0 ? detalles.join(' | ') : 'Carga consolidada 2026',
+      nombreTienda: tInfo.nombre,
+      codigoTienda: tInfo.codigo,
+    });
+  }
+
+  return items;
+}
+
+// ---------------------------------------------------------------------------
 // 5. Proceso Principal
 // ---------------------------------------------------------------------------
 async function main() {
@@ -303,44 +415,72 @@ async function main() {
 
   const fileBuffer = fs.readFileSync(fullExcelPath);
   const wb = XLSX.read(fileBuffer, { type: 'buffer' });
-  const hojas = targetSheet ? [targetSheet] : wb.SheetNames;
-
+  
   const todosLosItems = [];
   const tiendasDetectadas = new Map();
   const categoriasDetectadas = new Set();
 
-  for (const hoja of hojas) {
-    if (!wb.Sheets[hoja]) {
-      console.warn(`⚠️ La hoja "${hoja}" no existe en el archivo.`);
-      continue;
+  // 1. Revisar si hay una hoja consolidada
+  let hojaConsolidadaEncontrada = null;
+  if (!targetSheet) {
+    for (const h of wb.SheetNames) {
+      const itemsConsolidados = procesarHojaConsolidada(wb.Sheets[h]);
+      if (itemsConsolidados && itemsConsolidados.length > 0) {
+        hojaConsolidadaEncontrada = h;
+        console.log(`📋 Hoja consolidada detectada: "${h}" con ${itemsConsolidados.length} activos.`);
+        for (const item of itemsConsolidados) {
+          if (!tiendasDetectadas.has(item.nombreTienda)) {
+            tiendasDetectadas.set(item.nombreTienda, {
+              nombre: item.nombreTienda,
+              codigo: item.codigoTienda,
+              sectores: new Set(),
+            });
+          }
+          tiendasDetectadas.get(item.nombreTienda).sectores.add(item.sector);
+          categoriasDetectadas.add(item.categoria);
+          todosLosItems.push(item);
+        }
+        break;
+      }
     }
+  }
 
-    const itemsHoja = procesarHoja(wb.Sheets[hoja], hoja);
-    if (itemsHoja.length === 0) continue;
+  // 2. Si no es consolidada o se pidió una hoja puntual, procesar hoja por hoja
+  if (!hojaConsolidadaEncontrada) {
+    const hojas = targetSheet ? [targetSheet] : wb.SheetNames;
+    for (const hoja of hojas) {
+      if (!wb.Sheets[hoja]) {
+        console.warn(`⚠️ La hoja "${hoja}" no existe en el archivo.`);
+        continue;
+      }
 
-    const infoTienda = normalizarTienda(hoja);
+      const itemsHoja = procesarHoja(wb.Sheets[hoja], hoja);
+      if (itemsHoja.length === 0) continue;
 
-    if (!tiendasDetectadas.has(infoTienda.nombre)) {
-      tiendasDetectadas.set(infoTienda.nombre, {
-        nombre: infoTienda.nombre,
-        codigo: infoTienda.codigo,
-        sectores: new Set(),
-      });
+      const infoTienda = normalizarTienda(hoja);
+
+      if (!tiendasDetectadas.has(infoTienda.nombre)) {
+        tiendasDetectadas.set(infoTienda.nombre, {
+          nombre: infoTienda.nombre,
+          codigo: infoTienda.codigo,
+          sectores: new Set(),
+        });
+      }
+
+      const tObj = tiendasDetectadas.get(infoTienda.nombre);
+
+      for (const item of itemsHoja) {
+        tObj.sectores.add(item.sector);
+        categoriasDetectadas.add(item.categoria);
+        todosLosItems.push({
+          ...item,
+          nombreTienda: infoTienda.nombre,
+          codigoTienda: infoTienda.codigo,
+        });
+      }
+
+      console.log(`  ✓ Hoja "${hoja}" ➔ Tienda "${infoTienda.nombre}" (${infoTienda.codigo}): ${itemsHoja.length} activos detectados.`);
     }
-
-    const tObj = tiendasDetectadas.get(infoTienda.nombre);
-
-    for (const item of itemsHoja) {
-      tObj.sectores.add(item.sector);
-      categoriasDetectadas.add(item.categoria);
-      todosLosItems.push({
-        ...item,
-        nombreTienda: infoTienda.nombre,
-        codigoTienda: infoTienda.codigo,
-      });
-    }
-
-    console.log(`  ✓ Hoja "${hoja}" ➔ Tienda "${infoTienda.nombre}" (${infoTienda.codigo}): ${itemsHoja.length} activos detectados.`);
   }
 
   console.log(`\n📊 RESUMEN GENERAL:`);
@@ -499,6 +639,9 @@ async function main() {
 
   let correlativo = codigosExistentesBD ? codigosExistentesBD.length + 1 : 1;
 
+  const { error: errTestCol } = await supabase.from('assets').select('es_comodato').limit(1);
+  const soportaColComodato = !errTestCol;
+
   const activosParaInsertar = [];
   for (const item of todosLosItems) {
     const storeId = mapaTiendas.get(item.nombreTienda.toLowerCase().trim()) || null;
@@ -519,10 +662,10 @@ async function main() {
     correlativo++;
 
     const COTIZACION_USD = 1511.5;
-    const precioUsd = item.precio_ars ? Math.round((item.precio_ars / COTIZACION_USD) * 100) / 100 : 0;
-    const esComodato = item.nombre.toUpperCase().includes('COMODATO') || item.categoria.toUpperCase().includes('COMODATO');
+    const precioUsd = item.precio_usd || (item.precio_ars ? Math.round((item.precio_ars / COTIZACION_USD) * 100) / 100 : 0);
+    const esComodato = item.es_comodato ?? (item.nombre.toUpperCase().includes('COMODATO') || item.categoria.toUpperCase().includes('COMODATO'));
 
-    activosParaInsertar.push({
+    const activoObj = {
       codigo_interno: sku,
       nombre: item.nombre,
       marca: item.marca,
@@ -532,11 +675,16 @@ async function main() {
       cantidad: item.cantidad || 1,
       precio_ars: item.precio_ars || 0,
       precio_usd: precioUsd,
-      estado: 'Bueno',
-      observaciones: esComodato
-        ? `Bien en Comodato (Carga inicial desde planilla Excel, Pestaña: ${item.hoja})`
-        : `Carga inicial desde planilla Excel (Pestaña: ${item.hoja})`,
-    });
+      estado: item.estado || 'Bueno',
+      observaciones: item.observaciones
+        ? (esComodato && !item.observaciones.toLowerCase().includes('comodato') ? `Bien en Comodato | ${item.observaciones}` : item.observaciones)
+        : (esComodato ? `Bien en Comodato (Carga inicial desde planilla Excel, Pestaña: ${item.hoja})` : `Carga inicial desde planilla Excel (Pestaña: ${item.hoja})`),
+    };
+    if (soportaColComodato) {
+      activoObj.es_comodato = !!esComodato;
+    }
+
+    activosParaInsertar.push(activoObj);
   }
 
   const BATCH_SIZE = 50;
