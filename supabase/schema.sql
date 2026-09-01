@@ -151,6 +151,7 @@ create table if not exists public.assets (
   sector_id uuid references public.sectors(id) on delete set null,
   responsable text,
   observaciones text,
+  es_comodato boolean not null default false,
   fecha_creacion timestamptz not null default now(),
   fecha_baja timestamptz,
   motivo_baja text
@@ -592,3 +593,9 @@ drop policy if exists "escritura_admin" on public.toner_alertas;
 create policy "escritura_admin" on public.toner_alertas for all
   to authenticated
   using (public.es_admin()) with check (public.es_admin());
+
+-- ============================================================================
+-- Régimen de tenencia (Comodato / Prestado vs Propio)
+-- ============================================================================
+alter table public.assets add column if not exists es_comodato boolean not null default false;
+

@@ -94,6 +94,7 @@ const ACTIVO_VACIO = {
   sector_id: "",
   responsable: "",
   observaciones: "",
+  es_comodato: false,
   foto_url: "",
 };
 
@@ -140,6 +141,7 @@ function InventarioContenido() {
   const [filtroTienda, setFiltroTienda] = useState("todas");
   const [filtroCategoria, setFiltroCategoria] = useState("todas");
   const [filtroEstado, setFiltroEstado] = useState("todas");
+  const [filtroTenencia, setFiltroTenencia] = useState("todas");
   // Prefijado desde el buscador global del topbar (?buscar=...) o editable a mano.
   const [busqueda, setBusqueda] = useState(searchParams.get("buscar") || "");
   const [limite, setLimite] = useState(PAGE_SIZE);
@@ -251,6 +253,14 @@ function InventarioContenido() {
       if (filtroTienda !== "todas" && a.store_id !== filtroTienda) return false;
       if (filtroCategoria !== "todas" && a.category_id !== filtroCategoria) return false;
       if (filtroEstado !== "todas" && a.estado !== filtroEstado) return false;
+      
+      const esComodato = a.es_comodato ?? (
+        (a.observaciones || "").toLowerCase().includes("comodato") ||
+        (a.nombre || "").toLowerCase().includes("comodato")
+      );
+      if (filtroTenencia === "propios" && esComodato) return false;
+      if (filtroTenencia === "comodato" && !esComodato) return false;
+
       if (q) {
         const coincide =
           a.nombre.toLowerCase().includes(q) ||
@@ -261,11 +271,11 @@ function InventarioContenido() {
       }
       return true;
     });
-  }, [activos, filtroTienda, filtroCategoria, filtroEstado, busqueda]);
+  }, [activos, filtroTienda, filtroCategoria, filtroEstado, filtroTenencia, busqueda]);
 
   useEffect(() => {
     setLimite(PAGE_SIZE);
-  }, [filtroTienda, filtroCategoria, filtroEstado, busqueda]);
+  }, [filtroTienda, filtroCategoria, filtroEstado, filtroTenencia, busqueda]);
 
   if (!activos) return null;
 
@@ -288,6 +298,10 @@ function InventarioContenido() {
 
   function abrirEditar(a: Activo) {
     setEditId(a.id);
+    const esComodato = a.es_comodato ?? (
+      (a.observaciones || "").toLowerCase().includes("comodato") ||
+      (a.nombre || "").toLowerCase().includes("comodato")
+    );
     setForm({
       codigo_interno: a.codigo_interno,
       nombre: a.nombre,
@@ -306,6 +320,7 @@ function InventarioContenido() {
       sector_id: a.sector_id || "",
       responsable: a.responsable || "",
       observaciones: a.observaciones || "",
+      es_comodato: esComodato,
       foto_url: fotos.get(a.id) || "",
     });
     // Un ítem existente ya tiene sus precios cargados a mano — no
@@ -376,6 +391,7 @@ function InventarioContenido() {
         sector_id: form.sector_id || null,
         responsable: form.responsable,
         observaciones: form.observaciones,
+        es_comodato: form.es_comodato,
       };
 
       let assetId = editId;
@@ -545,6 +561,7 @@ function InventarioContenido() {
       "Total ARS": valorTotalARS(a),
       "Total USD": valorTotalUSD(a),
       Estado: a.estado,
+      Tenencia: (a.es_comodato || (a.observaciones || "").toLowerCase().includes("comodato") || a.nombre.toLowerCase().includes("comodato")) ? "Comodato / Prestado" : "Propio",
       Responsable: a.responsable || "",
       Observaciones: a.observaciones || "",
     }));
@@ -738,6 +755,14 @@ function InventarioContenido() {
             {ESTADOS_ACTIVO.map((e) => <SelectItem key={e} value={e}>{e}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={filtroTenencia} onValueChange={setFiltroTenencia}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Tenencia" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todas">Todas las tenencias</SelectItem>
+            <SelectItem value="propios">Bienes Propios</SelectItem>
+            <SelectItem value="comodato">En Comodato / Prestados</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <Card>
@@ -768,6 +793,10 @@ function InventarioContenido() {
               )}
               {activosVisibles.map((a) => {
                 const expandido = expandidos.has(a.id);
+                const esComodato = a.es_comodato ?? (
+                  (a.observaciones || "").toLowerCase().includes("comodato") ||
+                  (a.nombre || "").toLowerCase().includes("comodato")
+                );
                 return (
                   <Fragment key={a.id}>
                     <TableRow className={expandido ? "bg-accent/30 dark:bg-zinc-800/50 border-l-4 border-l-primary shadow-sm" : ""}>
@@ -785,9 +814,16 @@ function InventarioContenido() {
                         )}
                       </TableCell>
                       <TableCell className="p-2 max-w-[130px] sm:max-w-[220px] truncate">
-                        <span className="font-medium text-xs sm:text-sm truncate block" title={a.nombre}>
-                          {a.nombre}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-medium text-xs sm:text-sm truncate block" title={a.nombre}>
+                            {a.nombre}
+                          </span>
+                          {esComodato && (
+                            <Badge variant="outline" className="px-1 py-0 text-[9px] font-medium border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10 shrink-0">
+                              Comodato
+                            </Badge>
+                          )}
+                        </div>
                         {a.codigo_interno && (
                           <span className="font-mono text-[10px] text-muted-foreground block truncate">{a.codigo_interno}</span>
                         )}
@@ -1054,6 +1090,21 @@ function InventarioContenido() {
                 calcula solo (se puede pisar a mano).
               </p>
             )}
+
+            <label className="sm:col-span-2 flex cursor-pointer items-center gap-2.5 rounded-md border p-2.5 hover:bg-accent/20 transition-colors">
+              <input
+                type="checkbox"
+                className="h-4 w-4 shrink-0 rounded accent-[var(--navy-800)]"
+                checked={form.es_comodato}
+                onChange={(e) => setForm({ ...form, es_comodato: e.target.checked })}
+              />
+              <div className="text-sm">
+                <span className="font-medium text-xs sm:text-sm">Bien en Comodato / Prestado</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  Marcar si el equipo pertenece a un banco o proveedor externo (ej. Posnet Clover, cartelería de marca).
+                </span>
+              </div>
+            </label>
           </div>
 
           {/* Detalles adicionales: opcionales, colapsados por defecto */}

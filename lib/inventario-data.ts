@@ -26,6 +26,7 @@ export type Activo = {
   sector_id: string | null;
   responsable: string | null;
   observaciones: string | null;
+  es_comodato?: boolean;
   fecha_creacion: string;
   fecha_baja: string | null;
   motivo_baja: string | null;
@@ -89,6 +90,7 @@ export type ActivoInput = {
   sector_id: string | null;
   responsable: string;
   observaciones: string;
+  es_comodato?: boolean;
 };
 
 function payloadDe(input: ActivoInput) {
@@ -110,6 +112,7 @@ function payloadDe(input: ActivoInput) {
     sector_id: input.sector_id,
     responsable: input.responsable.trim() || null,
     observaciones: input.observaciones.trim() || null,
+    es_comodato: !!input.es_comodato,
   };
 }
 

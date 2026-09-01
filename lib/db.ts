@@ -57,6 +57,7 @@ export type Activo = {
   sector_id?: string | null;
   responsable?: string;
   observaciones?: string;
+  es_comodato?: boolean;
   foto_url?: string;
   fecha_creacion?: string;
   fecha_baja?: string;
