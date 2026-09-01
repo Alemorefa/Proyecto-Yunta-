@@ -7,7 +7,8 @@
     "clean": "node -e \"fs.rmSync('.next', { recursive: true, force: true })\"",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "importar-excel": "node scripts/importar-excel-inventario.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
