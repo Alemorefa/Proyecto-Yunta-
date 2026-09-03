@@ -490,7 +490,7 @@ async function main() {
 
   let totalValorARS = 0;
   for (const it of todosLosItems) {
-    totalValorARS += (it.cantidad || 1) * (it.precio_ars || 0);
+    totalValorARS += (it.cantidad ?? 1) * (it.precio_ars || 0);
   }
   console.log(`  • Valuación estimada total: $ ${totalValorARS.toLocaleString('es-AR')}`);
 
@@ -672,7 +672,7 @@ async function main() {
       category_id: catId,
       store_id: storeId,
       sector_id: sectorId,
-      cantidad: item.cantidad || 1,
+      cantidad: item.cantidad ?? 1,
       precio_ars: item.precio_ars || 0,
       precio_usd: precioUsd,
       estado: item.estado || 'Bueno',
