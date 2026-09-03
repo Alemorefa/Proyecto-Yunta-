@@ -57,8 +57,10 @@ export default function DashboardPage() {
 
     // Las cantidades se suman por unidades (no por líneas de ítem), porque
     // "Cámaras x26" cuenta como 26 activos, no como 1.
+    // ?? y no ||: la cantidad 0 es válida (el ítem figura pero no está
+    // físicamente). Con || el cero contaba como una unidad.
     const sumaCantidad = (lista: typeof activosVigentes) =>
-      lista.reduce((acc, a) => acc + (a.cantidad || 1), 0);
+      lista.reduce((acc, a) => acc + (a.cantidad ?? 1), 0);
 
     const catNombre = (id?: string | null) => categorias.find((c) => c.id === id)?.nombre;
     const muebles = sumaCantidad(activosVigentes.filter((a) => catNombre(a.category_id) === "Muebles"));
@@ -73,7 +75,7 @@ export default function DashboardPage() {
     const porCategoria = new Map<string, number>();
     activosVigentes.forEach((a) => {
       const nombre = catNombre(a.category_id) || "Sin categoría";
-      porCategoria.set(nombre, (porCategoria.get(nombre) || 0) + (a.cantidad || 1));
+      porCategoria.set(nombre, (porCategoria.get(nombre) || 0) + (a.cantidad ?? 1));
     });
     const categoriaData = [...porCategoria.entries()]
       .map(([label, value]) => ({ label, value }))

@@ -34,12 +34,16 @@ export type Activo = {
   printer_id: string | null;
 };
 
+// Ojo con el ?? en vez de ||: la cantidad 0 es un dato válido (el ítem está
+// en la lista pero físicamente no está: se movió, se devolvió, se usó en otra
+// sucursal). Con || el cero se tomaba como "vacío" y se valorizaba como si
+// hubiera una unidad, inflando los totales del Dashboard.
 export function valorTotalARS(a: Pick<Activo, "cantidad" | "precio_ars">) {
-  return (a.cantidad || 1) * (a.precio_ars || 0);
+  return (a.cantidad ?? 1) * (a.precio_ars || 0);
 }
 
 export function valorTotalUSD(a: Pick<Activo, "cantidad" | "precio_usd">) {
-  return (a.cantidad || 1) * (a.precio_usd || 0);
+  return (a.cantidad ?? 1) * (a.precio_usd || 0);
 }
 
 export async function listarActivos(): Promise<Activo[]> {

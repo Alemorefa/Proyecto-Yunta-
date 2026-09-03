@@ -105,6 +105,16 @@ function badgeEstado(estado: EstadoActivo) {
   return "secondary";
 }
 
+// La cantidad 0 es un dato válido: el ítem figura en la lista pero
+// físicamente no está (se movió a otra sucursal, se devolvió, se consumió).
+// Con `parseInt(x) || 1` el cero se tomaba como "vacío" y se guardaba como 1,
+// inventando stock que no existe. Solo el campo vacío asume una unidad.
+function cantidadDesdeTexto(valor: string): number {
+  if (String(valor).trim() === "") return 1;
+  const n = parseInt(String(valor), 10);
+  return Number.isFinite(n) && n >= 0 ? n : 1;
+}
+
 // Redondea a 2 decimales sin arrastrar errores de punto flotante (ej. 1.0049999 -> 1).
 function redondear2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -384,7 +394,7 @@ function InventarioContenido() {
         estado: form.estado,
         fecha_compra: form.fecha_compra,
         supplier_id: supplierId,
-        cantidad: parseInt(form.cantidad) || 1,
+        cantidad: cantidadDesdeTexto(form.cantidad),
         precio_ars: parseFloat(form.precio_ars) || 0,
         precio_usd: parseFloat(form.precio_usd) || 0,
         tienda_id: form.tienda_id || null,
@@ -619,7 +629,7 @@ function InventarioContenido() {
           categoria_id: categoria?.id || null,
           tienda_id: tienda?.id || null,
           sector_id: sector?.id || null,
-          cantidad: parseInt(pick(row, ["Cantidad"])) || 1,
+          cantidad: cantidadDesdeTexto(pick(row, ["Cantidad"])),
           precio_ars: parseFloat(pick(row, ["Precio unitario ARS", "Precio ARS"])) || 0,
           precio_usd: parseFloat(pick(row, ["Precio unitario USD", "Precio USD"])) || 0,
           estado,
@@ -1049,7 +1059,10 @@ function InventarioContenido() {
             </div>
             <div>
               <Label>Cantidad</Label>
-              <Input type="number" min={1} value={form.cantidad} onChange={(e) => setForm({ ...form, cantidad: e.target.value })} />
+              <Input type="number" min={0} value={form.cantidad} onChange={(e) => setForm({ ...form, cantidad: e.target.value })} />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Poné 0 si el ítem figura en la lista pero físicamente no está.
+              </p>
             </div>
             <div />
             <div>

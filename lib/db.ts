@@ -64,12 +64,14 @@ export type Activo = {
   motivo_baja?: string;
 };
 
+// Ver la nota en lib/inventario-data.ts: con || la cantidad 0 se tomaba como
+// "vacío" y contaba como una unidad.
 export function valorTotalARS(a: Activo) {
-  return (a.cantidad || 1) * (a.precio_ars || 0);
+  return (a.cantidad ?? 1) * (a.precio_ars || 0);
 }
 
 export function valorTotalUSD(a: Activo) {
-  return (a.cantidad || 1) * (a.precio_usd || 0);
+  return (a.cantidad ?? 1) * (a.precio_usd || 0);
 }
 
 export type AccionMovimiento =
