@@ -27,7 +27,7 @@ import {
 import { useRolActivo } from "@/lib/role";
 import { useSesionDisplay } from "@/lib/session";
 import { exportarExcel } from "@/lib/excel";
-import { sincronizarActivoDesdeImpresora, asegurarActivoParaImpresora } from "@/lib/vinculo-impresoras";
+import { sincronizarActivoDesdeImpresora } from "@/lib/vinculo-impresoras";
 import { calcularEstadoToner } from "@/lib/toner";
 import { hoyISO, hace } from "@/lib/fechas";
 import { MedidorToner } from "@/components/impresoras/medidor-toner";
@@ -179,7 +179,9 @@ export default function ImpresorasPage() {
     try {
       const dias = diasTonerNueva.trim() ? Number(diasTonerNueva) : null;
       const nueva = await crearImpresora(modeloNuevo.trim(), tiendaNueva, usaTonerNueva, dias);
-      await asegurarActivoParaImpresora(nueva);
+      // Antes acá se creaba también un ítem de inventario vinculado. Se sacó
+      // a propósito: los dos módulos se manejan por separado. Si la impresora
+      // tiene que figurar en el patrimonio, se carga aparte en Inventario.
 
       // Una impresora nueva viene con su cartucho puesto: se registra la
       // carga con la fecha de hoy para que el medidor arranque lleno y quede

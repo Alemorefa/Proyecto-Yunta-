@@ -1,0 +1,71 @@
+CARGAR INVENTARIO DESDE UNA PLANILLA
+====================================
+
+QUE HACE
+--------
+Lee la planilla de Excel que esta en esta misma carpeta y genera el SQL para
+cargar todos los items en Supabase de una sola vez, con sus sectores y su
+registro en el historial.
+
+Limpia los precios en formato argentino ($6.000,00), saltea las filas vacias
+y aparta las filas donde el sector tiene una anotacion en vez de una
+ubicacion (por ejemplo "se movio a alem").
+
+
+COMO SE USA
+-----------
+1. En Google Sheets: Archivo -> Descargar -> Microsoft Excel (.xlsx)
+
+2. Copia ese archivo DENTRO de esta carpeta.
+
+3. Doble click en GENERAR-SQL.bat
+
+4. Te va a pedir el nombre de la tienda. Escribilo EXACTAMENTE como figura en
+   la pantalla de Tiendas de la app y dale Enter.
+
+5. Cuando termine deja el archivo carga-inventario.sql en esta carpeta, y en
+   pantalla te muestra un resumen: cuantos items, cuantos sectores y el
+   valorizado total.
+
+   >>> Mira ese valorizado total. Si no se parece a lo que esperabas, algo se
+       leyo mal. Avisa antes de seguir.
+
+
+COMO SE CARGA EL SQL
+--------------------
+Abri carga-inventario.sql con el Bloc de notas. Tiene 3 bloques numerados y
+hay que correrlos EN ORDEN en Supabase (SQL Editor):
+
+  Bloque 1 - Crea los sectores que falten.
+
+  Bloque 2 - ENSAYO. No escribe nada. Te muestra cada fila con su store_id y
+             su sector_id. Si alguno sale en NULL, ese nombre no coincide con
+             lo que hay cargado en el sistema. Corregi antes de seguir.
+
+  Bloque 3 - La carga real. Recien cuando el bloque 2 salga limpio.
+
+
+QUE COLUMNAS RECONOCE
+---------------------
+  item / Descripcion / Nombre  ->  descripcion del item
+  sector / Sector              ->  sector
+  cantidad / Cantidad          ->  cantidad
+  unitario / Precio ARS        ->  precio unitario en pesos
+
+Opcionales, si las tenes:
+  categoria, estado, observaciones
+
+Las columnas que no reconoce las ignora (por ejemplo una de totales).
+
+
+SI ALGO FALLA
+-------------
+"No encontre ninguna planilla en esta carpeta"
+    El .xlsx no esta aca. Copialo dentro de esta carpeta.
+
+"Cannot find module 'xlsx'"
+    Falta instalar las dependencias del proyecto. Abri una terminal en
+    C:\dev\Proyecto-Yunta- y corre:  npm install
+
+"node no se reconoce como un comando"
+    Falta instalar Node.js: https://nodejs.org (version LTS)

@@ -12,3 +12,8 @@ tsconfig.tsbuildinfo
 _RESPALDO-*.zip
 # Copias en conflicto de OneDrive (que no vuelvan a entrar al repo)
 *-BOOK-GDDKINLEMB*
+# Planillas y SQL que genera la herramienta de carga: son de cada corrida,
+# no del proyecto. La herramienta en sí (los .mjs, .bat y LEEME) sí se versiona.
+carga-inventario/*.xlsx
+carga-inventario/*.csv
+carga-inventario/*.sql
